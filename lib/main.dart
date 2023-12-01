@@ -2,6 +2,7 @@ import 'package:file/local.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 import 'src/model/app.dart';
 import 'src/model/db.dart';
@@ -246,6 +247,7 @@ class _GeoSetterState extends State<GeoSetter> {
   bool _isEditing = false;
   late TextEditingController controller;
   late FocusNode focusNode;
+  late final WebViewController webViewController;
 
   Future<void> _updateRow() async {
     if (widget.path == null) {
@@ -305,6 +307,26 @@ class _GeoSetterState extends State<GeoSetter> {
     focusNode = FocusNode();
     FocusManager.instance.addListener(_handleFocusChanged);
     _updateRow();
+    webViewController = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      //..setBackgroundColor(const Color(0x00000000))
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onProgress: (int progress) {
+            // Update loading bar.
+          },
+          onPageStarted: (String url) {},
+          onPageFinished: (String url) {},
+          onWebResourceError: (WebResourceError error) {},
+          onNavigationRequest: (NavigationRequest request) {
+            if (request.url.startsWith('https://www.youtube.com/')) {
+              return NavigationDecision.prevent;
+            }
+            return NavigationDecision.navigate;
+          },
+        ),
+      )
+      ..loadRequest(Uri.parse('https://flutter.dev'));
   }
 
   @override
@@ -345,8 +367,8 @@ class _GeoSetterState extends State<GeoSetter> {
         const Divider(),
         const SizedBox(width: 1, height: 20),
         const Divider(),
-        const Expanded(
-          child: AppKitView(viewType: 'platformview-view-type'),
+        Expanded(
+          child: WebViewWidget(controller: webViewController),
         ),
       ],
     );

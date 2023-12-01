@@ -16,11 +16,19 @@ dependencies:
   platform_native:
     path: packages/platform_native
   sqflite: any
+  webview_flutter: ^4.4.2
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^2.0.0
+
+dependency_overrides:
+  webview_flutter_wkwebview:
+    git:
+      url: https://github.com/stuartmorgan/packages
+      path: packages/webview_flutter/webview_flutter_wkwebview
+      ref: webview-macos
 
 flutter:
   uses-material-design: true
