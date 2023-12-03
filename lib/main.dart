@@ -259,6 +259,10 @@ class _GeoSetterState extends State<GeoSetter> {
       print('~!@ :: $coords');
       if (coords != null) {
         controller.text = '${coords.latitude}, ${coords.longitude}';
+        webViewController.loadRequest(Uri.parse('https://tvolkert.dev/map.html?initial=${coords.latitude},${coords.longitude}'));
+        // webViewController.loadRequest(Uri.parse('https://www.google.com/maps/embed/v1/place?key=AIzaSyBzhnRnULijOGJ34pv_rarOReZnGabGEM8&q=${coords.latitude}%2C${coords.longitude}&zoom=10'));
+        // webViewController.loadRequest(Uri.parse('https://www.google.com/maps/@?api=1&map_action=map&center=${coords.latitude},${coords.longitude}&zoom=10&layer=none&query=${coords.latitude}%2C${coords.longitude}%2C10z'));
+        // webViewController.loadRequest(Uri.parse('https://www.google.com/maps/search/?api=1&query=${coords.latitude}%2C${coords.longitude}'));
       } else {
         controller.text = '';
       }
@@ -312,21 +316,29 @@ class _GeoSetterState extends State<GeoSetter> {
       //..setBackgroundColor(const Color(0x00000000))
       ..setNavigationDelegate(
         NavigationDelegate(
-          onProgress: (int progress) {
-            // Update loading bar.
+          // onProgress: (int progress) {
+          //   print('progress!');
+          //   // Update loading bar.
+          // },
+          // onPageStarted: (String url) {
+          //   print('started!');
+          // },
+          // onPageFinished: (String url) {
+          //   print('finished!');
+          // },
+          // onWebResourceError: (WebResourceError error) {
+          //   print('web resource error!');
+          // },
+          onUrlChange: (UrlChange change) {
+            print('url change! :: ${change.url}');
           },
-          onPageStarted: (String url) {},
-          onPageFinished: (String url) {},
-          onWebResourceError: (WebResourceError error) {},
           onNavigationRequest: (NavigationRequest request) {
-            if (request.url.startsWith('https://www.youtube.com/')) {
-              return NavigationDecision.prevent;
-            }
             return NavigationDecision.navigate;
           },
         ),
       )
-      ..loadRequest(Uri.parse('https://flutter.dev'));
+      // ..loadRequest(Uri.parse('https://flutter.dev'))
+      ;
   }
 
   @override
