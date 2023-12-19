@@ -68,11 +68,14 @@ class _MyHomePageState extends State<MyHomePage> implements HomeController {
     );
     if (result != null) {
       assert(photos != null);
-      photos!.addFiles(result.files.map<String>((PlatformFile file) {
+      final Stream<DbRow> rows = photos!.addFiles(result.files.map<String>((PlatformFile file) {
         return file.path!;
-      })).then((_) {
-        setState(() {});
-      });
+      }));
+      await for (final DbRow _ in rows) {
+        if (mounted) {
+          setState(() {});
+        }
+      }
     }
   }
 
@@ -313,22 +316,8 @@ class _GeoSetterState extends State<GeoSetter> {
     _updateRow();
     webViewController = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      //..setBackgroundColor(const Color(0x00000000))
       ..setNavigationDelegate(
         NavigationDelegate(
-          // onProgress: (int progress) {
-          //   print('progress!');
-          //   // Update loading bar.
-          // },
-          // onPageStarted: (String url) {
-          //   print('started!');
-          // },
-          // onPageFinished: (String url) {
-          //   print('finished!');
-          // },
-          // onWebResourceError: (WebResourceError error) {
-          //   print('web resource error!');
-          // },
           onUrlChange: (UrlChange change) {
             print('url change! :: ${change.url}');
           },
@@ -337,7 +326,6 @@ class _GeoSetterState extends State<GeoSetter> {
           },
         ),
       )
-      // ..loadRequest(Uri.parse('https://flutter.dev'))
       ;
   }
 

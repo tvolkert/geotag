@@ -32,6 +32,8 @@ class GpsCoordinates {
     };
   }
 
+  String get latlng => '$latitude,$longitude';
+
   @override
   String toString() => '$latitude, $longitude';
 }

@@ -16,6 +16,7 @@ dependencies:
   platform_native:
     path: packages/platform_native
   sqflite: any
+  sqflite_common_ffi: any
   webview_flutter: ^4.4.2
 
 dev_dependencies:
