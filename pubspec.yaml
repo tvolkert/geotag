@@ -9,6 +9,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  chicago: any
   collection: any
   file: any
   file_picker: ^5.2.4

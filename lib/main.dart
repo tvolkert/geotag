@@ -1,5 +1,6 @@
 // ignore_for_file: avoid_print
 
+import 'package:chicago/chicago.dart' show isPlatformCommandKeyPressed, isShiftKeyPressed, ListViewSelectionController, SelectMode, Span;
 import 'package:file/local.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -56,9 +57,9 @@ class _TaskProgress {
 
 class _MyHomePageState extends State<MyHomePage> implements HomeController {
   late final ScrollController scrollController;
-  late FocusNode _focusNode;
+  late final ListViewSelectionController _selectionController;
+  late final FocusNode _focusNode;
   DbResults? photos;
-  int? currentIndex;
   _TaskProgress? taskProgress;
 
   void _launchFilePicker() async {
@@ -110,7 +111,7 @@ class _MyHomePageState extends State<MyHomePage> implements HomeController {
   KeyEventResult _handleKeyEvent(FocusNode focusNode, KeyEvent event) {
     KeyEventResult result = KeyEventResult.ignored;
     if (event.logicalKey == LogicalKeyboardKey.delete || event.logicalKey == LogicalKeyboardKey.backspace) {
-      if (currentIndex != null) {
+      if (selectedIndex != null) {
         () async {
           final bool? confirmed = await showModalBottomSheet<bool>(
             context: context,
@@ -139,7 +140,7 @@ class _MyHomePageState extends State<MyHomePage> implements HomeController {
             },
           );
           if (confirmed ?? false) {
-            _deleteItems(<int>[currentIndex!]);
+            _deleteItems(<int>[selectedIndex!]);
           }
         }();
         result = KeyEventResult.handled;
@@ -191,7 +192,9 @@ class _MyHomePageState extends State<MyHomePage> implements HomeController {
     );
   }
 
-  DbRow? get currentRow => currentIndex == null ? null : photos?[currentIndex!];
+  int? get selectedIndex => _selectionController.selectedItems.singleOrNull;
+
+  DbRow? get selectedRow => selectedIndex == null ? null : photos?[selectedIndex!];
 
   Future<void> _deleteItems(Iterable<int> indexes) async {
     assert(photos != null);
@@ -199,7 +202,7 @@ class _MyHomePageState extends State<MyHomePage> implements HomeController {
     assert(indexes.every((int index) => index < photos!.length));
     _addTasks(indexes.length);
     setState(() {
-      currentIndex = null;
+      _selectionController.clearSelection();
       _focusNode.unfocus();
     });
     await for (DbRow deleted in photos!.deleteFiles(indexes)) {
@@ -213,6 +216,7 @@ class _MyHomePageState extends State<MyHomePage> implements HomeController {
   void initState() {
     super.initState();
     scrollController = ScrollController();
+    _selectionController = ListViewSelectionController(selectMode: SelectMode.multi);
     _focusNode = FocusNode();
     SchedulerBinding.instance.addPostFrameCallback((Duration timeStamp) {
       () async {
@@ -225,6 +229,7 @@ class _MyHomePageState extends State<MyHomePage> implements HomeController {
   @override
   void dispose() {
     _focusNode.dispose();
+    _selectionController.dispose();
     scrollController.dispose();
     super.dispose();
   }
@@ -256,7 +261,7 @@ class _MyHomePageState extends State<MyHomePage> implements HomeController {
         ),
         body: Column(
           children: <Widget>[
-            Expanded(child: MainArea(currentRow)),
+            Expanded(child: MainArea(selectedRow)),
             const Divider(height: 1),
             SizedBox(
               height: 175,
@@ -278,7 +283,24 @@ class _MyHomePageState extends State<MyHomePage> implements HomeController {
                         child: GestureDetector(
                           onTap: () {
                             setState(() {
-                              currentIndex = index;
+                              if (isShiftKeyPressed()) {
+                                final int startIndex = _selectionController.firstSelectedIndex;
+                                if (startIndex == -1) {
+                                  _selectionController.addSelectedIndex(index);
+                                } else {
+                                  final int endIndex = _selectionController.lastSelectedIndex;
+                                  final Span range = Span(index, index > startIndex ? startIndex : endIndex);
+                                  _selectionController.selectedRange = range;
+                                }
+                              } else if (isPlatformCommandKeyPressed()) {
+                                if (_selectionController.isItemSelected(index)) {
+                                  _selectionController.removeSelectedIndex(index);
+                                } else {
+                                  _selectionController.addSelectedIndex(index);
+                                }
+                              } else {
+                                _selectionController.selectedIndex = index;
+                              }
                               _focusNode.requestFocus();
                             });
                           },
@@ -288,7 +310,7 @@ class _MyHomePageState extends State<MyHomePage> implements HomeController {
                               Thumbnail(
                                 index: index,
                                 row: photos![index],
-                                isSelected: currentIndex == index,
+                                isSelected: _selectionController.isItemSelected(index),
                               ),
                             ],
                           ),
