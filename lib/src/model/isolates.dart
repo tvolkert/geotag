@@ -6,14 +6,14 @@ import 'package:flutter/foundation.dart';
 typedef StreamCallback<M, R> = Stream<R> Function(M message);
 
 class Isolates {
-  static Stream<R> stream<M, R extends Object>(StreamCallback<M, R> worker, M message, {String? debugLabel}) {
+  static Stream<R> stream<M, R>(StreamCallback<M, R> worker, M message, {String? debugLabel}) {
     debugLabel ??= kReleaseMode ? 'compute' : worker.toString();
     return _stream(() {
       return worker(message);
     }, debugName: debugLabel);
   }
 
-  static Stream<R> _stream<M, R extends Object>(Stream<R> Function() worker, {required String debugName}) {
+  static Stream<R> _stream<M, R>(Stream<R> Function() worker, {required String debugName}) {
     final StreamController<R> controller = StreamController<R>();
     final RawReceivePort resultPort = RawReceivePort();
     resultPort.handler = (dynamic message) {

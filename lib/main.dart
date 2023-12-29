@@ -1,13 +1,16 @@
+// ignore_for_file: avoid_print
+
 import 'package:file/local.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
+import 'package:video_player/video_player.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import 'src/model/app.dart';
 import 'src/model/db.dart';
 import 'src/model/gps.dart';
-import 'src/model/image.dart';
 
 void main() async {
   await GeotagAppBinding.ensureInitialized();
@@ -17,21 +20,12 @@ void main() async {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
       title: 'Geotagger',
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // Try running your application with "flutter run". You'll see the
-        // application has a blue toolbar. Then, without quitting the app, try
-        // changing the primarySwatch below to Colors.green and then invoke
-        // "hot reload" (press "r" in the console where you ran "flutter run",
-        // or simply save your changes to "hot reload" in a Flutter IDE).
-        // Notice that the counter didn't reset back to zero; the application
-        // is not restarted.
         primarySwatch: Colors.indigo,
       ),
       home: const MyHomePage(),
@@ -40,7 +34,6 @@ class MyApp extends StatelessWidget {
 }
 
 abstract class HomeController {
-  set mainImage(String path);
 }
 
 class MyHomePage extends StatefulWidget {
@@ -54,24 +47,35 @@ class MyHomePage extends StatefulWidget {
   }
 }
 
+class _TaskProgress {
+  _TaskProgress({required this.total});
+
+  int completed = 0;
+  int total;
+}
+
 class _MyHomePageState extends State<MyHomePage> implements HomeController {
   late final ScrollController scrollController;
+  late FocusNode _focusNode;
   DbResults? photos;
-  String? currentPath;
+  int? currentIndex;
+  _TaskProgress? taskProgress;
 
   void _launchFilePicker() async {
     FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.image,
-      allowedExtensions: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
+      type: FileType.media,
+      allowedExtensions: ['jpg', 'jpeg', /*'png', 'gif', 'webp', */'mp4'],
       allowMultiple: true,
       lockParentWindow: true,
     );
     if (result != null) {
       assert(photos != null);
+      _addTasks(result.files.length);
       final Stream<DbRow> rows = photos!.addFiles(result.files.map<String>((PlatformFile file) {
         return file.path!;
       }));
       await for (final DbRow _ in rows) {
+        _handleTaskCompleted();
         if (mounted) {
           setState(() {});
         }
@@ -79,17 +83,137 @@ class _MyHomePageState extends State<MyHomePage> implements HomeController {
     }
   }
 
-  @override
-  set mainImage(String path) {
+  bool get hasUnsavedEdits => photos?.where((DbRow row) => row.isModified).isNotEmpty ?? false;
+
+  void _addTasks(int newTaskCount) {
     setState(() {
-      currentPath = path;
+      if (taskProgress == null) {
+        taskProgress = _TaskProgress(total: newTaskCount);
+      } else {
+        taskProgress!.total += newTaskCount;
+      }
     });
+  }
+
+  void _handleTaskCompleted() {
+    assert(taskProgress != null);
+    if (mounted) {
+      setState(() {
+        taskProgress!.completed++;
+        if (taskProgress!.completed == taskProgress!.total) {
+          taskProgress = null;
+        }
+      });
+    }
+  }
+
+  KeyEventResult _handleKeyEvent(FocusNode focusNode, KeyEvent event) {
+    KeyEventResult result = KeyEventResult.ignored;
+    if (event.logicalKey == LogicalKeyboardKey.delete || event.logicalKey == LogicalKeyboardKey.backspace) {
+      if (currentIndex != null) {
+        () async {
+          final bool? confirmed = await showModalBottomSheet<bool>(
+            context: context,
+            builder: (BuildContext context) {
+              return Container(
+                height: 200,
+                color: Colors.amber,
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      const Text('Are you sure you wan to delete this file?'),
+                      ElevatedButton(
+                        child: const Text('Cancel'),
+                        onPressed: () => Navigator.pop<bool>(context, false),
+                      ),
+                      ElevatedButton(
+                        child: const Text('Yes'),
+                        onPressed: () => Navigator.pop<bool>(context, true),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+          if (confirmed ?? false) {
+            _deleteItems(<int>[currentIndex!]);
+          }
+        }();
+        result = KeyEventResult.handled;
+      }
+    }
+    return result;
+  }
+
+  Future<void> _writeEditsToDisk() async {
+    assert(photos != null);
+    final DbResults modifiedPhotos = photos!.where((DbRow row) => row.isModified).toList();
+    assert(modifiedPhotos.isNotEmpty);
+    _addTasks(modifiedPhotos.length);
+    await for (DbRow row in modifiedPhotos.writeFilesToDisk()) {
+      // TODO: cancel operation upon `dispose`
+      _handleTaskCompleted();
+      print('wrote ${row.path}');
+    }
+  }
+
+  Future<void> _exportToFolder() async {
+    String? path = await FilePicker.platform.getDirectoryPath(
+      dialogTitle: 'Export to folder',
+      lockParentWindow: true,
+    );
+    if (path != null && photos != null) {
+      _addTasks(photos!.length);
+      await for (void _ in photos!.exportToFolder(path)) {
+        _handleTaskCompleted();
+      }
+    }
+  }
+
+  Widget? _getLeading() {
+    if (taskProgress == null) {
+      return null;
+    }
+    return Row(
+      children: <Widget>[
+        const CircularProgressIndicator(
+          color: Color.fromARGB(255, 73, 69, 79),
+        ),
+        Expanded(
+          child: LinearProgressIndicator(
+            value: taskProgress!.completed / taskProgress!.total,
+          ),
+        ),
+      ],
+    );
+  }
+
+  DbRow? get currentRow => currentIndex == null ? null : photos?[currentIndex!];
+
+  Future<void> _deleteItems(Iterable<int> indexes) async {
+    assert(photos != null);
+    assert(indexes.length <= photos!.length);
+    assert(indexes.every((int index) => index < photos!.length));
+    _addTasks(indexes.length);
+    setState(() {
+      currentIndex = null;
+      _focusNode.unfocus();
+    });
+    await for (DbRow deleted in photos!.deleteFiles(indexes)) {
+      _handleTaskCompleted();
+      print('deleted file ${deleted.path}');
+      setState(() {});
+    }
   }
 
   @override
   void initState() {
     super.initState();
     scrollController = ScrollController();
+    _focusNode = FocusNode();
     SchedulerBinding.instance.addPostFrameCallback((Duration timeStamp) {
       () async {
         photos = await DatabaseBinding.instance.getAllPhotos();
@@ -100,6 +224,7 @@ class _MyHomePageState extends State<MyHomePage> implements HomeController {
 
   @override
   void dispose() {
+    _focusNode.dispose();
     scrollController.dispose();
     super.dispose();
   }
@@ -110,15 +235,28 @@ class _MyHomePageState extends State<MyHomePage> implements HomeController {
       state: this,
       child: Scaffold(
         appBar: AppBar(
-          leading: IconButton(
-            icon: const Icon(Icons.upload_file),
-            tooltip: 'Add photos & videos to library',
-            onPressed: _launchFilePicker,
-          ),
+          leading: _getLeading(),
+          actions: <Widget>[
+            IconButton(
+              icon: const Icon(Icons.add_a_photo_outlined),
+              tooltip: 'Add photos & videos to library',
+              onPressed: _launchFilePicker,
+            ),
+            IconButton(
+              icon: const Icon(Icons.save),
+              tooltip: 'Save all edits',
+              onPressed: taskProgress == null && hasUnsavedEdits ? _writeEditsToDisk : null,
+            ),
+            IconButton(
+              icon: const Icon(Icons.drive_folder_upload),
+              tooltip: 'Export to folder',
+              onPressed: taskProgress == null ? _exportToFolder : null,
+            ),
+          ],
         ),
         body: Column(
           children: <Widget>[
-            Expanded(child: MainArea(currentPath)),
+            Expanded(child: MainArea(currentRow)),
             const Divider(height: 1),
             SizedBox(
               height: 175,
@@ -126,16 +264,38 @@ class _MyHomePageState extends State<MyHomePage> implements HomeController {
                 controller: scrollController,
                 thumbVisibility: true,
                 trackVisibility: true,
-                child: ListView.builder(
-                  itemExtent: 175,
-                  controller: scrollController,
-                  scrollDirection: Axis.horizontal,
-                  itemCount: photos?.length ?? 0,
-                  itemBuilder: (BuildContext context, int index) {
-                    return Thumbnail(
-                      key: ValueKey<String>(photos![index].path),
-                    );
-                  },
+                child: Focus(
+                  focusNode: _focusNode,
+                  onKeyEvent: _handleKeyEvent,
+                  child: ListView.builder(
+                    itemExtent: 175,
+                    controller: scrollController,
+                    scrollDirection: Axis.horizontal,
+                    itemCount: photos?.length ?? 0,
+                    itemBuilder: (BuildContext context, int index) {
+                      return Padding(
+                        padding: const EdgeInsets.all(5),
+                        child: GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              currentIndex = index;
+                              _focusNode.requestFocus();
+                            });
+                          },
+                          child: Stack(
+                            fit: StackFit.passthrough,
+                            children: <Widget>[
+                              Thumbnail(
+                                index: index,
+                                row: photos![index],
+                                isSelected: currentIndex == index,
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 ),
               ),
             ),
@@ -159,49 +319,151 @@ class _HomeScope extends InheritedWidget {
 }
 
 class Thumbnail extends StatefulWidget {
-  /// The [key] argument is required for thumbnails and should be set to the
-  /// file system path of the photo whose thumbnail is to be shown.
-  const Thumbnail({required ValueKey<String> super.key});
+  Thumbnail({
+    required this.index,
+    required this.row,
+    required this.isSelected,
+  }) : super(key: ValueKey<String>(row.path));
 
-  ValueKey<String> get valueKey => key as ValueKey<String>;
+  final int index;
+  final DbRow row;
+  final bool isSelected;
+
+  String get path => row.path;
+  bool get hasLatlng => row.hasLatlng;
 
   @override
   State<Thumbnail> createState() => _ThumbnailState();
 }
 
 class _ThumbnailState extends State<Thumbnail> {
-  void _handleTap() {
-    MyHomePage.of(context).mainImage = widget.valueKey.value;
+  void _handleRowUpdated(DbRow row) {
+    assert(row == widget.row);
+    setState(() {});
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    const LocalFileSystem fs = LocalFileSystem();
+    DatabaseBinding.instance.setFileListener(widget.path, _handleRowUpdated);
+  }
+
+  @override
+  void didUpdateWidget(covariant Thumbnail oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.path != oldWidget.path) {
+      DatabaseBinding.instance.setFileListener(oldWidget.path, null);
+      DatabaseBinding.instance.setFileListener(widget.path, _handleRowUpdated);
+    }
+  }
+
+  @override
+  void dispose() {
+    DatabaseBinding.instance.setFileListener(widget.path, null);
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: _handleTap,
-      child: Image.file(
-        const LocalFileSystem().file(widget.valueKey.value),
-        fit: BoxFit.cover,
-        key: widget.key,
-        errorBuilder: (BuildContext context, Object error, StackTrace? stackTrace) {
-          return Placeholder(
-            color: Colors.red,
-            child: Center(
+    return Stack(
+      fit: StackFit.passthrough,
+      children: <Widget>[
+        Image.memory(
+          widget.row.thumbnail,
+          fit: BoxFit.cover,
+          key: widget.key,
+        ),
+        // Image.file(
+        //   const LocalFileSystem().file(widget.path),
+        //   fit: BoxFit.cover,
+        //   key: widget.key,
+        //   errorBuilder: (BuildContext context, Object error, StackTrace? stackTrace) {
+        //     return Placeholder(
+        //       color: Colors.red,
+        //       child: Center(
+        //         child: Padding(
+        //           padding: const EdgeInsets.all(5),
+        //           child: Text(widget.path),
+        //         ),
+        //       ),
+        //     );
+        //   },
+        // ),
+        Align(
+          alignment: const Alignment(-1.0, 0.4),
+          child: Padding(
+            padding: const EdgeInsets.all(5),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withAlpha(0xdd),
+                backgroundBlendMode: BlendMode.srcATop,
+              ),
               child: Padding(
-                padding: const EdgeInsets.all(5),
-                child: Text(widget.valueKey.value),
+                padding: const EdgeInsets.all(3),
+                child: Icon(
+                  widget.row.hasDateTime ? Icons.date_range : Icons.date_range,
+                  color: widget.row.hasDateTime ? Colors.green : Colors.red,
+                ),
               ),
             ),
-          );
-        },
-      ),
+          ),
+        ),
+        Align(
+          alignment: Alignment.bottomLeft,
+          child: Padding(
+            padding: const EdgeInsets.all(5),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withAlpha(0xdd),
+                backgroundBlendMode: BlendMode.srcATop,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(3),
+                child: Icon(
+                  widget.hasLatlng ? Icons.location_on : Icons.location_off,
+                  color: widget.hasLatlng ? Colors.green : Colors.red,
+                ),
+              ),
+            ),
+          ),
+        ),
+        if (widget.row.isModified)
+          Align(
+            alignment: Alignment.topRight,
+            child: Padding(
+              padding: const EdgeInsets.all(5),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withAlpha(0xdd),
+                  backgroundBlendMode: BlendMode.srcATop,
+                ),
+                child: const Padding(
+                  padding: EdgeInsets.all(3),
+                  child: Icon(
+                    Icons.save,
+                    color: Colors.red,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        if (widget.row.type == MediaType.video)
+          const VideoPlayButton(),
+        if (widget.isSelected)
+          const ColoredBox(color: Color(0x440000ff)),
+      ],
     );
   }
 }
 
 class MainArea extends StatelessWidget {
-  const MainArea(this.path, {super.key});
+  const MainArea(this.row, {super.key});
 
-  final String? path;
+  final DbRow? row;
 
   @override
   Widget build(BuildContext context) {
@@ -209,109 +471,300 @@ class MainArea extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisAlignment: MainAxisAlignment.center,
       children: <Widget>[
-        Expanded(child: MainImage(path)),
+        Expanded(child: MainImage(row)),
         SizedBox(
           width: 500,
-          child: GeoSetter(path),
+          child: GeoSetter(row),
         ),
       ],
     );
   }
 }
 
-class MainImage extends StatelessWidget {
-  const MainImage(this.path, {super.key});
+class MainImage extends StatefulWidget {
+  const MainImage(this.row, {super.key});
 
-  final String? path;
+  final DbRow? row;
+
+  @override
+  State<MainImage> createState() => _MainImageState();
+}
+
+class _MainImageState extends State<MainImage> {
+  VideoPlayerController? _videoController;
+  bool _hasPlayedOnce = false;
+
+  void _handlePlayPauseVideo() {
+    assert(_videoController != null);
+    print('playing video ${widget.row!.path}');
+    setState(() {
+      if (_videoController!.value.isPlaying) {
+        _videoController!.pause();
+      } else {
+        _hasPlayedOnce = true;
+        _videoController!.play();
+      }
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeVideoController();
+  }
+
+  @override
+  void didUpdateWidget(covariant MainImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.row?.path != oldWidget.row?.path) {
+      // TODO: Can we just update it instead of disposing and re-creating?
+      if (_videoController?.value.isPlaying ?? false) {
+        _videoController!.pause();
+      }
+      _videoController?.pause();
+      _videoController?.dispose();
+      _videoController = null;
+      _initializeVideoController();
+    }
+  }
+
+  void _initializeVideoController() {
+    if (widget.row != null) {
+      const LocalFileSystem fs = LocalFileSystem();
+      _videoController = VideoPlayerController.file(fs.file(widget.row!.path));
+      _videoController!.setLooping(true);
+      _videoController!.initialize().then((void _) {
+        setState(() {});
+      });
+      _hasPlayedOnce = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _videoController?.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (path == null) {
+    if (widget.row == null) {
       return Container();
     }
 
-    return Image.file(
-      const LocalFileSystem().file(path),
+    final Widget photoImage = Image.file(const LocalFileSystem().file(widget.row!.photoPath));
+    switch (widget.row!.type) {
+      case MediaType.photo:
+        return photoImage;
+      case MediaType.video:
+        assert(_videoController != null);
+        final Widget videoPlayer = Center(
+          child: AspectRatio(
+            aspectRatio: _videoController!.value.aspectRatio,
+            child: VideoPlayer(_videoController!),
+          ),
+        );
+        if (!_videoController!.value.isInitialized) {
+          return photoImage;
+        } else if (_videoController!.value.isPlaying) {
+          return Stack(
+            fit: StackFit.passthrough,
+            children: [
+              GestureDetector(
+                onTap: _handlePlayPauseVideo,
+                child: videoPlayer,
+              ),
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: _VideoProgressMonitor(
+                  controller: _videoController!,
+                ),
+              ),
+            ],
+          );
+        } else {
+          return Stack(
+            fit: StackFit.passthrough,
+            children: [
+              _hasPlayedOnce ? videoPlayer : photoImage,
+              GestureDetector(
+                onTap: _handlePlayPauseVideo,
+                child: const VideoPlayButton(),
+              ),
+            ],
+          );
+        }
+    }
+  }
+}
+
+class _VideoProgressMonitor extends StatefulWidget {
+  const _VideoProgressMonitor({required this.controller});
+
+  final VideoPlayerController controller;
+
+  @override
+  State<_VideoProgressMonitor> createState() => _VideoProgressMonitorState();
+}
+
+class _VideoProgressMonitorState extends State<_VideoProgressMonitor> {
+  double _progress = 0;
+
+  void _handleProgressUpdate() {
+    setState(() {
+      final VideoPlayerValue value = widget.controller.value;
+      _progress = value.position.inMilliseconds / value.duration.inMilliseconds;
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_handleProgressUpdate);
+    _handleProgressUpdate();
+  }
+
+  @override
+  void didUpdateWidget(covariant _VideoProgressMonitor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.controller != oldWidget.controller) {
+      oldWidget.controller.removeListener(_handleProgressUpdate);
+      widget.controller.addListener(_handleProgressUpdate);
+      _handleProgressUpdate();
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_handleProgressUpdate);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LinearProgressIndicator(value: _progress);
+  }
+}
+
+class VideoPlayButton extends StatelessWidget {
+  const VideoPlayButton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints constraints) {
+          final double size = (constraints.biggest / 5).shortestSide;
+          return SizedBox(
+            width: size,
+            height: size,
+            child: const ColoredBox(
+              color: Color(0xaa000000),
+            ),
+          );
+        }
+      ),
     );
   }
 }
 
 class GeoSetter extends StatefulWidget {
-  const GeoSetter(this.path, {super.key});
+  const GeoSetter(this.row, {super.key});
 
-  final String? path;
+  final DbRow? row;
 
   @override
   State<GeoSetter> createState() => _GeoSetterState();
 }
 
 class _GeoSetterState extends State<GeoSetter> {
-  DbRow? row;
-  bool _isEditing = false;
-  late TextEditingController controller;
-  late FocusNode focusNode;
+  bool _isEditingDateTime = false;
+  bool _isEditingLatlng = false;
+  late TextEditingController dateTimeController;
+  late TextEditingController latlngController;
+  late FocusNode dateTimeFocusNode;
+  late FocusNode latlngFocusNode;
   late final WebViewController webViewController;
 
   Future<void> _updateRow() async {
-    if (widget.path == null) {
-      row = null;
-      controller.text = '';
+    if (widget.row == null) {
+      latlngController.text = '';
+      dateTimeController.text = '';
     } else {
-      row = await DatabaseBinding.instance.getPhoto(widget.path!);
-      final GpsCoordinates? coords = JpegFile(widget.path!).getGpsCoordinates();
-      print('~!@ :: $coords');
-      if (coords != null) {
-        controller.text = '${coords.latitude}, ${coords.longitude}';
-        webViewController.loadRequest(Uri.parse('https://tvolkert.dev/map.html?initial=${coords.latitude},${coords.longitude}'));
-        // webViewController.loadRequest(Uri.parse('https://www.google.com/maps/embed/v1/place?key=AIzaSyBzhnRnULijOGJ34pv_rarOReZnGabGEM8&q=${coords.latitude}%2C${coords.longitude}&zoom=10'));
-        // webViewController.loadRequest(Uri.parse('https://www.google.com/maps/@?api=1&map_action=map&center=${coords.latitude},${coords.longitude}&zoom=10&layer=none&query=${coords.latitude}%2C${coords.longitude}%2C10z'));
-        // webViewController.loadRequest(Uri.parse('https://www.google.com/maps/search/?api=1&query=${coords.latitude}%2C${coords.longitude}'));
+      if (widget.row!.hasDateTime) {
+        dateTimeController.text = widget.row!.dateTime!.toIso8601String();
       } else {
-        controller.text = '';
+        dateTimeController.text = '';
+      }
+      if (widget.row!.hasLatlng) {
+        final GpsCoordinates coords = widget.row!.coords!;
+        latlngController.text = '${coords.latitude},${coords.longitude}';
+        webViewController.loadRequest(Uri.parse('https://tvolkert.dev/map.html?initial=${coords.latitude},${coords.longitude}'));
+      } else {
+        latlngController.text = '';
       }
     }
     setState(() {});
   }
 
-  void _handleSubmitted(String value) {
-    assert(value == controller.text);
-    setIsEditing(false);
+  void _handleDateTimeSubmitted(String value) {
+    assert(value == dateTimeController.text);
+    setIsEditingDateTime(false);
+  }
+
+  void _handleLatlngSubmitted(String value) {
+    assert(value == latlngController.text);
+    setIsEditingLatlng(false);
   }
 
   void _handleFocusChanged() {
-    print('focus changed -- ${FocusManager.instance.primaryFocus == focusNode}');
-    setIsEditing(FocusManager.instance.primaryFocus == focusNode);
+    setIsEditingDateTime(FocusManager.instance.primaryFocus == dateTimeFocusNode);
+    setIsEditingLatlng(FocusManager.instance.primaryFocus == latlngFocusNode);
   }
 
-  void _saveEdits() {
-    print('saving edits...');
-    try {
-      final GpsCoordinates coords = GpsCoordinates.fromString(controller.text);
-      // DatabaseBinding.instance.db.update(
-      //   'PHOTO',
-      //   <String, Object?>{'LATLON': '${coords.latitude}/${coords.longitude}'},
-      //   where: 'PATH = ?',
-      //   whereArgs: <String>[widget.path!],
-      // );
-    } on FormatException {
-      print('invalid gps coordinates');
-    }
-  }
-
-  void setIsEditing(bool value) {
-    if (value != _isEditing) {
-      _isEditing = value;
+  void setIsEditingDateTime(bool value) {
+    if (value != _isEditingDateTime) {
+      _isEditingDateTime = value;
       if (!value) {
         _saveEdits();
       }
     }
   }
 
+  void setIsEditingLatlng(bool value) {
+    if (value != _isEditingLatlng) {
+      _isEditingLatlng = value;
+      if (!value) {
+        _saveEdits();
+      }
+    }
+  }
+
+  Future<void> _saveEdits() async {
+    print('saving edits...');
+    try {
+      final GpsCoordinates coords = GpsCoordinates.fromString(latlngController.text);
+      final DateTime? date = dateTimeController.text.isEmpty ? null : DateTime.parse(dateTimeController.text);
+      widget.row!
+          ..latlng = coords.latlng
+          ..dateTimeOriginal = date
+          ..dateTimeDigitized = date
+          ..isModified = true
+          ..lastModified = DateTime.now()
+          ;
+      await widget.row!.commit();
+    } on FormatException {
+      print('invalid gps coordinates');
+    }
+  }
+
   @override
   void initState() {
     super.initState();
-    controller = TextEditingController();
-    focusNode = FocusNode();
+    dateTimeController = TextEditingController();
+    latlngController = TextEditingController();
+    dateTimeFocusNode = FocusNode();
+    latlngFocusNode = FocusNode();
     FocusManager.instance.addListener(_handleFocusChanged);
     _updateRow();
     webViewController = WebViewController()
@@ -338,30 +791,36 @@ class _GeoSetterState extends State<GeoSetter> {
   @override
   void dispose() {
     FocusManager.instance.removeListener(_handleFocusChanged);
-    focusNode.dispose();
-    controller.dispose();
+    latlngFocusNode.dispose();
+    dateTimeFocusNode.dispose();
+    latlngController.dispose();
+    dateTimeController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (widget.path == null) {
+    if (widget.row == null) {
       return Container();
-    }
-
-    if (row == null) {
-      return const Center(child: CircularProgressIndicator());
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        SelectableText(row!.path),
+        SelectableText(widget.row!.path),
         Center(
           child: TextField(
-            controller: controller,
-            focusNode: focusNode,
-            onSubmitted: _handleSubmitted,
+            controller: dateTimeController,
+            focusNode: dateTimeFocusNode,
+            onSubmitted: _handleDateTimeSubmitted,
+          ),
+        ),
+        const Divider(),
+        Center(
+          child: TextField(
+            controller: latlngController,
+            focusNode: latlngFocusNode,
+            onSubmitted: _handleLatlngSubmitted,
           ),
         ),
         const Divider(),

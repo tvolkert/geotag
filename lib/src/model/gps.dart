@@ -1,7 +1,7 @@
 import 'package:image/image.dart';
 import 'package:image/src/util/rational.dart'; // ignore: implementation_imports
 
-class EmptyExifException extends Error {}
+import 'exif.dart';
 
 class GpsCoordinates {
   GpsCoordinates(double latitude, double longitude)
@@ -11,7 +11,7 @@ class GpsCoordinates {
   const GpsCoordinates.raw(this.latitude, this.longitude);
 
   factory GpsCoordinates.fromString(String value) {
-    final List<String> values = value.split(', ');
+    final List<String> values = value.split(',');
     if (values.length != 2) {
       throw ArgumentError(value);
     }
@@ -33,6 +33,19 @@ class GpsCoordinates {
   }
 
   String get latlng => '$latitude,$longitude';
+
+  String toVideoString() {
+    String latitudeValue = latitude.value.toStringAsFixed(4);
+    if (latitude.value >= 0) {
+      latitudeValue = '+$latitudeValue';
+    }
+    String longitudeValue = longitude.value.toStringAsFixed(4);
+    longitudeValue.padLeft(8, '0');
+    if (longitude.value >= 0) {
+      longitudeValue = '+$longitudeValue';
+    }
+    return '$latitudeValue$longitudeValue/';
+  }
 
   @override
   String toString() => '$latitude, $longitude';

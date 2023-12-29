@@ -1,8 +1,12 @@
-import 'dart:io';
-import 'dart:typed_data';
+// ignore_for_file: avoid_print
 
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:image/image.dart';
 
+import 'exif_date_time.dart';
+import 'exif.dart';
 import 'gps.dart';
 
 class JpegFile {
@@ -10,6 +14,11 @@ class JpegFile {
       : assert(path.toLowerCase().endsWith('jpg') || path.toLowerCase().endsWith('.jpeg'));
 
   final String path;
+
+  Image? _image;
+  @protected Image get image => _image ??= _decode();
+
+  Uint8List get bytes => image.toUint8List();
 
   Image _decode() {
     // Read the image file
@@ -22,10 +31,8 @@ class JpegFile {
     return image;
   }
 
-  void setGpsCoordinates(GpsCoordinates coords) {
+  void write() {
     try {
-      final Image image = _decode();
-      image.exif.gpsIfd.data.addAll(coords.exifData);
       final File file = File(path);
       file.writeAsBytesSync(encodeJpg(image));
     } on ImageException catch (error) {
@@ -35,16 +42,30 @@ class JpegFile {
 
   GpsCoordinates? getGpsCoordinates() {
     try {
-      final Image image = _decode();
       final GpsLatitude latitude = GpsLatitude.fromExif(image.exif.gpsIfd);
       final GpsLongitude longitude = GpsLongitude.fromExif(image.exif.gpsIfd);
       return GpsCoordinates.raw(latitude, longitude);
-    } on ImageException catch (error) {
-      print('ERROR: $error');
-      return null;
     } on EmptyExifException {
       print('EMPTY');
       return null;
     }
+  }
+
+  void setGpsCoordinates(GpsCoordinates coords) {
+    image.exif.gpsIfd.data.addAll(coords.exifData);
+  }
+
+  DateTime? getDateTimeOriginal() => ExifDateTime.original(image.exif.imageIfd);
+
+  void setDateTimeOriginal(DateTime dateTime) {
+    image.exif.exifIfd.data.addAll(dateTime.exifDataAsOriginal);
+    image.exif.imageIfd.data.addAll(dateTime.exifDataAsOriginal);
+  }
+
+  DateTime? getDateTimeDigitized() => ExifDateTime.digitized(image.exif.imageIfd);
+
+  void setDateTimeDigitized(DateTime dateTime) {
+    image.exif.exifIfd.data.addAll(dateTime.exifDataAsDigitized);
+    image.exif.imageIfd.data.addAll(dateTime.exifDataAsDigitized);
   }
 }

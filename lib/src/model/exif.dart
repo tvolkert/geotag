@@ -1,0 +1,1 @@
+class EmptyExifException extends Error {}
