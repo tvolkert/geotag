@@ -9,7 +9,7 @@ import 'gps.dart';
 import 'metadata.dart';
 
 class Mp4 {
-  Mp4(this.path) : assert(path.toLowerCase().endsWith('mp4'));
+  Mp4(this.path) : assert(path.toLowerCase().endsWith('mp4') || path.toLowerCase().endsWith('mov'));
 
   final String path;
 

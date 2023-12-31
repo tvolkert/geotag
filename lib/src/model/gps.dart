@@ -11,7 +11,7 @@ class GpsCoordinates {
   const GpsCoordinates.raw(this.latitude, this.longitude);
 
   factory GpsCoordinates.fromString(String value) {
-    final List<String> values = value.split(',');
+    final List<String> values = value.split(RegExp(r', *'));
     if (values.length != 2) {
       throw ArgumentError(value);
     }

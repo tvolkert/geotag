@@ -1,5 +1,7 @@
 // ignore_for_file: avoid_print
 
+import 'dart:ui' as ui;
+
 import 'package:chicago/chicago.dart' show isPlatformCommandKeyPressed, isShiftKeyPressed, ListViewSelectionController, SelectMode, Span;
 import 'package:file/local.dart';
 import 'package:file_picker/file_picker.dart';
@@ -9,6 +11,7 @@ import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import 'src/extensions/duration.dart';
 import 'src/model/app.dart';
 import 'src/model/db.dart';
 import 'src/model/gps.dart';
@@ -37,6 +40,24 @@ class MyApp extends StatelessWidget {
 abstract class HomeController {
 }
 
+class _TaskProgress {
+  _TaskProgress({required this.total});
+
+  int completed = 0;
+  int total;
+}
+
+class VideoPlayerPlayPauseController {
+  VoidCallback? _onPlayPause;
+  set onPlayPause(VoidCallback? listener) {
+    _onPlayPause = listener;
+  }
+
+  void playPause() {
+    _onPlayPause?.call();
+  }
+}
+
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key});
 
@@ -48,24 +69,21 @@ class MyHomePage extends StatefulWidget {
   }
 }
 
-class _TaskProgress {
-  _TaskProgress({required this.total});
-
-  int completed = 0;
-  int total;
-}
-
 class _MyHomePageState extends State<MyHomePage> implements HomeController {
   late final ScrollController scrollController;
   late final ListViewSelectionController _selectionController;
   late final FocusNode _focusNode;
+  final ScrollToVisibleController scrollToVisibleController = ScrollToVisibleController();
+  final VideoPlayerPlayPauseController playPauseController = VideoPlayerPlayPauseController();
   DbResults? photos;
   _TaskProgress? taskProgress;
+
+  static const double listViewItemExtent = 175;
 
   void _launchFilePicker() async {
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.media,
-      allowedExtensions: ['jpg', 'jpeg', /*'png', 'gif', 'webp', */'mp4'],
+      allowedExtensions: ['jpg', 'jpeg', /*'png', 'gif', 'webp', */'mp4', 'mov'],
       allowMultiple: true,
       lockParentWindow: true,
     );
@@ -108,42 +126,47 @@ class _MyHomePageState extends State<MyHomePage> implements HomeController {
     }
   }
 
+  // TODO: file issue about not receiving rewind or ff key events on macOS
   KeyEventResult _handleKeyEvent(FocusNode focusNode, KeyEvent event) {
     KeyEventResult result = KeyEventResult.ignored;
-    if (event.logicalKey == LogicalKeyboardKey.delete || event.logicalKey == LogicalKeyboardKey.backspace) {
-      if (selectedIndex != null) {
+    if (photos != null && _selectionController.selectedItems.isNotEmpty && event is! KeyUpEvent) {
+      if (event.logicalKey == LogicalKeyboardKey.delete || event.logicalKey == LogicalKeyboardKey.backspace) {
         () async {
           final bool? confirmed = await showModalBottomSheet<bool>(
             context: context,
-            builder: (BuildContext context) {
-              return Container(
-                height: 200,
-                color: Colors.amber,
-                child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      const Text('Are you sure you wan to delete this file?'),
-                      ElevatedButton(
-                        child: const Text('Cancel'),
-                        onPressed: () => Navigator.pop<bool>(context, false),
-                      ),
-                      ElevatedButton(
-                        child: const Text('Yes'),
-                        onPressed: () => Navigator.pop<bool>(context, true),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
+            builder: (BuildContext context) => const ConfirmDeleteFilesDialog(),
           );
           if (confirmed ?? false) {
-            _deleteItems(<int>[selectedIndex!]);
+            _deleteItems(_selectionController.selectedItems.toList());
           }
         }();
         result = KeyEventResult.handled;
+      } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+        final int newSelectedIndex = _selectionController.firstSelectedIndex - 1;
+        if (newSelectedIndex >= 0) {
+          setState(() {
+            _selectionController.selectedIndex = newSelectedIndex;
+            scrollToVisibleController.notifyListener(newSelectedIndex, ScrollPositionAlignmentPolicy.keepVisibleAtStart);
+          });
+        }
+        result = KeyEventResult.handled;
+      } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+        final int newSelectedIndex = _selectionController.lastSelectedIndex + 1;
+        if (newSelectedIndex < photos!.length) {
+          setState(() {
+            _selectionController.selectedIndex = newSelectedIndex;
+            scrollToVisibleController.notifyListener(newSelectedIndex, ScrollPositionAlignmentPolicy.keepVisibleAtEnd);
+          });
+        }
+        result = KeyEventResult.handled;
+      } else if (event.logicalKey == LogicalKeyboardKey.space) {
+        if (_selectionController.selectedItems.length == 1) {
+          final DbRow row = photos![_selectionController.firstSelectedIndex];
+          if (row.type == MediaType.video) {
+            playPauseController.playPause();
+            result = KeyEventResult.handled;
+          }
+        }
       }
     }
     return result;
@@ -261,10 +284,15 @@ class _MyHomePageState extends State<MyHomePage> implements HomeController {
         ),
         body: Column(
           children: <Widget>[
-            Expanded(child: MainArea(selectedRow)),
+            Expanded(
+              child: MainArea(
+                row: selectedRow,
+                playPauseController: playPauseController,
+              ),
+            ),
             const Divider(height: 1),
             SizedBox(
-              height: 175,
+              height: listViewItemExtent,
               child: Scrollbar(
                 controller: scrollController,
                 thumbVisibility: true,
@@ -273,7 +301,7 @@ class _MyHomePageState extends State<MyHomePage> implements HomeController {
                   focusNode: _focusNode,
                   onKeyEvent: _handleKeyEvent,
                   child: ListView.builder(
-                    itemExtent: 175,
+                    itemExtent: listViewItemExtent,
                     controller: scrollController,
                     scrollDirection: Axis.horizontal,
                     itemCount: photos?.length ?? 0,
@@ -311,6 +339,7 @@ class _MyHomePageState extends State<MyHomePage> implements HomeController {
                                 index: index,
                                 row: photos![index],
                                 isSelected: _selectionController.isItemSelected(index),
+                                controller: scrollToVisibleController,
                               ),
                             ],
                           ),
@@ -318,6 +347,69 @@ class _MyHomePageState extends State<MyHomePage> implements HomeController {
                       );
                     },
                   ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class ConfirmDeleteFilesDialog extends StatelessWidget {
+  const ConfirmDeleteFilesDialog({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        color: Color.fromARGB(255, 151, 200, 223),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(25),
+        )
+      ),
+      child: SizedBox(
+        height: 200,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.max,
+          children: <Widget>[
+            const Expanded(
+              flex: 1,
+              child: Center(
+                child: Text(
+                  'Are you sure you wan to delete the selected files?',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+            Expanded(
+              flex: 1,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 200),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: <Widget>[
+                    Expanded(
+                      flex: 4,
+                      child: ElevatedButton(
+                        child: const Text('Cancel'),
+                        onPressed: () => Navigator.pop<bool>(context, false),
+                      ),
+                    ),
+                    Expanded(
+                      flex: 1,
+                      child: Container(),
+                    ),
+                    Expanded(
+                      flex: 4,
+                      child: ElevatedButton(
+                        child: const Text('Yes'),
+                        onPressed: () => Navigator.pop<bool>(context, true),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -340,16 +432,58 @@ class _HomeScope extends InheritedWidget {
   bool updateShouldNotify(covariant _HomeScope oldWidget) => false;
 }
 
+class ScrollToVisibleController {
+  final Set<ScrollToVisibleListener> _listeners = <ScrollToVisibleListener>{};
+
+  void addListener(ScrollToVisibleListener listener) {
+    _listeners.add(listener);
+  }
+
+  void removeListener(ScrollToVisibleListener listener) {
+    _listeners.remove(listener);
+  }
+
+  void notifyListener(int index, ScrollPositionAlignmentPolicy policy) {
+    for (ScrollToVisibleListener listener in _listeners) {
+      if (listener.widget.index == index) {
+        listener.handleScrollToVisible(policy);
+      }
+    }
+  }
+}
+
+mixin ScrollToVisibleListener on State<Thumbnail> {
+  void handleScrollToVisible(ScrollPositionAlignmentPolicy policy) {
+    SchedulerBinding.instance.addPostFrameCallback((Duration timeStamp) {
+      Scrollable.ensureVisible(context, alignmentPolicy: policy);
+    }, debugLabel: 'scrollToVisible');
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(this);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(this);
+    super.dispose();
+  }
+}
+
 class Thumbnail extends StatefulWidget {
   Thumbnail({
     required this.index,
     required this.row,
     required this.isSelected,
+    required this.controller,
   }) : super(key: ValueKey<String>(row.path));
 
   final int index;
   final DbRow row;
   final bool isSelected;
+  final ScrollToVisibleController controller;
 
   String get path => row.path;
   bool get hasLatlng => row.hasLatlng;
@@ -358,7 +492,7 @@ class Thumbnail extends StatefulWidget {
   State<Thumbnail> createState() => _ThumbnailState();
 }
 
-class _ThumbnailState extends State<Thumbnail> {
+class _ThumbnailState extends State<Thumbnail> with ScrollToVisibleListener {
   void _handleRowUpdated(DbRow row) {
     assert(row == widget.row);
     setState(() {});
@@ -367,7 +501,6 @@ class _ThumbnailState extends State<Thumbnail> {
   @override
   void initState() {
     super.initState();
-    const LocalFileSystem fs = LocalFileSystem();
     DatabaseBinding.instance.setFileListener(widget.path, _handleRowUpdated);
   }
 
@@ -396,22 +529,6 @@ class _ThumbnailState extends State<Thumbnail> {
           fit: BoxFit.cover,
           key: widget.key,
         ),
-        // Image.file(
-        //   const LocalFileSystem().file(widget.path),
-        //   fit: BoxFit.cover,
-        //   key: widget.key,
-        //   errorBuilder: (BuildContext context, Object error, StackTrace? stackTrace) {
-        //     return Placeholder(
-        //       color: Colors.red,
-        //       child: Center(
-        //         child: Padding(
-        //           padding: const EdgeInsets.all(5),
-        //           child: Text(widget.path),
-        //         ),
-        //       ),
-        //     );
-        //   },
-        // ),
         Align(
           alignment: const Alignment(-1.0, 0.4),
           child: Padding(
@@ -476,16 +593,24 @@ class _ThumbnailState extends State<Thumbnail> {
         if (widget.row.type == MediaType.video)
           const VideoPlayButton(),
         if (widget.isSelected)
-          const ColoredBox(color: Color(0x440000ff)),
+          DecoratedBox(
+            decoration: BoxDecoration(border: Border.all(width: 10, color: Colors.white)),
+            child: const ColoredBox(color: Color(0x440000ff)),
+          ),
       ],
     );
   }
 }
 
 class MainArea extends StatelessWidget {
-  const MainArea(this.row, {super.key});
+  const MainArea({
+    super.key,
+    required this.row,
+    required this.playPauseController,
+  });
 
   final DbRow? row;
+  final VideoPlayerPlayPauseController playPauseController;
 
   @override
   Widget build(BuildContext context) {
@@ -493,7 +618,12 @@ class MainArea extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisAlignment: MainAxisAlignment.center,
       children: <Widget>[
-        Expanded(child: MainImage(row)),
+        Expanded(
+          child: MainImage(
+            row: row,
+            playPauseController: playPauseController,
+          ),
+        ),
         SizedBox(
           width: 500,
           child: GeoSetter(row),
@@ -504,9 +634,14 @@ class MainArea extends StatelessWidget {
 }
 
 class MainImage extends StatefulWidget {
-  const MainImage(this.row, {super.key});
+  const MainImage({
+    super.key,
+    required this.row,
+    required this.playPauseController,
+  });
 
   final DbRow? row;
+  final VideoPlayerPlayPauseController playPauseController;
 
   @override
   State<MainImage> createState() => _MainImageState();
@@ -514,7 +649,7 @@ class MainImage extends StatefulWidget {
 
 class _MainImageState extends State<MainImage> {
   VideoPlayerController? _videoController;
-  bool _hasPlayedOnce = false;
+  bool _hasPlayedOnce = false; // TOOD: file bug against video_player
 
   void _handlePlayPauseVideo() {
     assert(_videoController != null);
@@ -527,27 +662,6 @@ class _MainImageState extends State<MainImage> {
         _videoController!.play();
       }
     });
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _initializeVideoController();
-  }
-
-  @override
-  void didUpdateWidget(covariant MainImage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.row?.path != oldWidget.row?.path) {
-      // TODO: Can we just update it instead of disposing and re-creating?
-      if (_videoController?.value.isPlaying ?? false) {
-        _videoController!.pause();
-      }
-      _videoController?.pause();
-      _videoController?.dispose();
-      _videoController = null;
-      _initializeVideoController();
-    }
   }
 
   void _initializeVideoController() {
@@ -563,7 +677,30 @@ class _MainImageState extends State<MainImage> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    _initializeVideoController();
+    widget.playPauseController.onPlayPause = _handlePlayPauseVideo;
+  }
+
+  @override
+  void didUpdateWidget(covariant MainImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.row?.path != oldWidget.row?.path) {
+      if (_videoController?.value.isPlaying ?? false) {
+        _videoController!.pause();
+      }
+      _videoController?.pause();
+      // TODO: Can we just update it instead of disposing and re-creating?
+      _videoController?.dispose();
+      _videoController = null;
+      _initializeVideoController();
+    }
+  }
+
+  @override
   void dispose() {
+    widget.playPauseController.onPlayPause = null;
     _videoController?.dispose();
     super.dispose();
   }
@@ -613,6 +750,12 @@ class _MainImageState extends State<MainImage> {
                 onTap: _handlePlayPauseVideo,
                 child: const VideoPlayButton(),
               ),
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: _VideoProgressMonitor(
+                  controller: _videoController!,
+                ),
+              ),
             ],
           );
         }
@@ -631,12 +774,42 @@ class _VideoProgressMonitor extends StatefulWidget {
 
 class _VideoProgressMonitorState extends State<_VideoProgressMonitor> {
   double _progress = 0;
+  String _positionText = '';
+  String _durationText = '';
+  bool _pointerDown = false;
 
   void _handleProgressUpdate() {
     setState(() {
       final VideoPlayerValue value = widget.controller.value;
       _progress = value.position.inMilliseconds / value.duration.inMilliseconds;
+      _positionText = value.position.toSecondsPrecision();
+      _durationText = value.duration.toSecondsPrecision();
     });
+  }
+
+  void _seekToEventPosition(PointerEvent event) {
+    final Duration total = widget.controller.value.duration;
+    final double percentage = event.localPosition.dx / context.size!.width;
+    final Duration seekTo = total * percentage;
+    widget.controller.seekTo(seekTo);
+  }
+
+  void _handlePointerDown(PointerDownEvent event) {
+    _seekToEventPosition(event);
+    setState(() {
+      _pointerDown = true;
+    });
+  }
+
+  void _handlePointerUp(PointerUpEvent event) {
+    setState(() {
+      _pointerDown = false;
+    });
+  }
+
+  void _handlePointerMove(PointerMoveEvent event) {
+    assert(_pointerDown);
+    _seekToEventPosition(event);
   }
 
   @override
@@ -664,7 +837,46 @@ class _VideoProgressMonitorState extends State<_VideoProgressMonitor> {
 
   @override
   Widget build(BuildContext context) {
-    return LinearProgressIndicator(value: _progress);
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.end,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          height: 21,
+          child: MouseRegion(
+            cursor: SystemMouseCursors.resizeLeftRight,
+            child: Listener(
+              behavior: HitTestBehavior.opaque,
+              onPointerDown: _handlePointerDown,
+              onPointerUp: _handlePointerUp,
+              onPointerMove: _pointerDown ? _handlePointerMove : null,
+              child: AbsorbPointer(
+                child: Align(
+                  alignment: const Alignment(-1, 0),
+                  child: SizedBox(
+                    height: 5,
+                    child: LinearProgressIndicator(
+                      value: _progress,
+                      color: Colors.grey,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(10, 0, 10, 3),
+          child: Row(
+            children: <Widget>[
+              ConstrainedBox(constraints: const BoxConstraints(minWidth: 45), child: Text(_positionText)),
+              ConstrainedBox(constraints: const BoxConstraints(minWidth: 10), child: const Text('/')),
+              ConstrainedBox(constraints: const BoxConstraints(minWidth: 45), child: Text(_durationText)),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -680,13 +892,41 @@ class VideoPlayButton extends StatelessWidget {
           return SizedBox(
             width: size,
             height: size,
-            child: const ColoredBox(
-              color: Color(0xaa000000),
+            child: const DecoratedBox(
+              decoration: BoxDecoration(
+                color: Color(0xaa000000),
+                borderRadius: BorderRadius.all(Radius.circular(10))
+              ),
+              child: CustomPaint(painter: PlayButtonPainter()),
             ),
           );
         }
       ),
     );
+  }
+}
+
+class PlayButtonPainter extends CustomPainter {
+  const PlayButtonPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    ui.Paint paint = ui.Paint()
+        ..style = ui.PaintingStyle.fill
+        ..color = Colors.white
+        ;
+    ui.Path path = ui.Path()
+        ..moveTo(size.width / 3, size.height / 3)
+        ..lineTo(size.width * 2 / 3, size.height / 2)
+        ..lineTo(size.width / 3, size.height * 2 / 3)
+        ..close()
+        ;
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) {
+    return false;
   }
 }
 
@@ -708,7 +948,7 @@ class _GeoSetterState extends State<GeoSetter> {
   late FocusNode latlngFocusNode;
   late final WebViewController webViewController;
 
-  Future<void> _updateRow() async {
+  Future<void> _updateRow({bool firstRun = false}) async {
     if (widget.row == null) {
       latlngController.text = '';
       dateTimeController.text = '';
@@ -718,12 +958,18 @@ class _GeoSetterState extends State<GeoSetter> {
       } else {
         dateTimeController.text = '';
       }
+      String? currentUrl = await webViewController.currentUrl();
       if (widget.row!.hasLatlng) {
         final GpsCoordinates coords = widget.row!.coords!;
-        latlngController.text = '${coords.latitude},${coords.longitude}';
-        webViewController.loadRequest(Uri.parse('https://tvolkert.dev/map.html?initial=${coords.latitude},${coords.longitude}'));
+        latlngController.text = '${coords.latitude}, ${coords.longitude}';
+        if (firstRun || currentUrl == null) {
+          webViewController.loadRequest(Uri.parse('https://tvolkert.dev/map.html?initial=${coords.latitude},${coords.longitude}'));
+        } else {
+          webViewController.runJavaScript('window.rePin("${coords.latitude},${coords.longitude}")');
+        }
       } else {
         latlngController.text = '';
+        webViewController.loadRequest(Uri.parse('https://tvolkert.dev/map.html?initial=0,0'));
       }
     }
     setState(() {});
@@ -763,7 +1009,6 @@ class _GeoSetterState extends State<GeoSetter> {
   }
 
   Future<void> _saveEdits() async {
-    print('saving edits...');
     try {
       final GpsCoordinates coords = GpsCoordinates.fromString(latlngController.text);
       final DateTime? date = dateTimeController.text.isEmpty ? null : DateTime.parse(dateTimeController.text);
@@ -775,6 +1020,7 @@ class _GeoSetterState extends State<GeoSetter> {
           ..lastModified = DateTime.now()
           ;
       await widget.row!.commit();
+      _updateRow();
     } on FormatException {
       print('invalid gps coordinates');
     }
@@ -788,8 +1034,9 @@ class _GeoSetterState extends State<GeoSetter> {
     dateTimeFocusNode = FocusNode();
     latlngFocusNode = FocusNode();
     FocusManager.instance.addListener(_handleFocusChanged);
-    _updateRow();
+    _updateRow(firstRun: true);
     webViewController = WebViewController()
+      ..clearCache()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(
         NavigationDelegate(
@@ -807,7 +1054,7 @@ class _GeoSetterState extends State<GeoSetter> {
   @override
   void didUpdateWidget(covariant GeoSetter oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _updateRow();
+    _updateRow(firstRun: false);
   }
 
   @override

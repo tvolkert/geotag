@@ -1,3 +1,5 @@
+// ignore_for_file: avoid_print
+
 import 'dart:async';
 
 import 'package:collection/collection.dart';
@@ -138,6 +140,7 @@ extension DbResultsExtensions on DbResults {
   }
 
   Stream<DbRow> deleteFiles(Iterable<int> indexes) async* {
+    print('deleteFiles($indexes)');
     // TODO: provide hook whereby caller can cancel operation.
     assert(indexes.length <= length);
     assert(indexes.every((int index) => index < length));
@@ -161,119 +164,139 @@ extension DbResultsExtensions on DbResults {
 
   /// This runs in a separate isolate.
   Stream<DbRow> _addFilesWorker(_AddFilesMessage message) async* {
-    const FileSystem fs = LocalFileSystem();
-    databaseFactory = databaseFactoryFfi;
-    final Database db = await openDatabase(message.dbPath);
-    final ChrootFileSystem chrootFs = ChrootFileSystem(fs, fs.path.join(message.appSupportPath, 'media'));
-    for (String path in message.paths) {
-      final Uint8List bytes = fs.file(path).readAsBytesSync();
-      chrootFs.file(path).parent.createSync(recursive: true);
-      chrootFs.file(path).writeAsBytesSync(bytes);
-      final String chrootPath = '${chrootFs.root}$path';
-      assert(fs.file(chrootPath).existsSync());
-      assert(const ListEquality<int>().equals(fs.file(path).readAsBytesSync(), chrootFs.file(path).readAsBytesSync()));
+    try {
+      const FileSystem fs = LocalFileSystem();
+      databaseFactory = databaseFactoryFfi;
+      final Database db = await openDatabase(message.dbPath);
+      final ChrootFileSystem chrootFs = ChrootFileSystem(fs, fs.path.join(message.appSupportPath, 'media'));
+      for (String path in message.paths) {
+        final Uint8List bytes = fs.file(path).readAsBytesSync();
+        chrootFs.file(path).parent.createSync(recursive: true);
+        chrootFs.file(path).writeAsBytesSync(bytes);
+        final String chrootPath = '${chrootFs.root}$path';
+        assert(fs.file(chrootPath).existsSync());
+        assert(const ListEquality<int>().equals(fs.file(path).readAsBytesSync(), chrootFs.file(path).readAsBytesSync()));
 
-      if (path.toLowerCase().endsWith('jpg') || path.toLowerCase().endsWith('.jpeg')) {
-        final JpegFile jpeg = JpegFile(path);
-        final GpsCoordinates? coords = jpeg.getGpsCoordinates();
-        final DateTime? dateTimeOriginal = jpeg.getDateTimeOriginal();
-        final DateTime? dateTimeDigitized = jpeg.getDateTimeDigitized();
-        DbRow row = DbRow()
-          ..type = MediaType.photo
-          ..path = chrootPath
-          ..photoPath = chrootPath
-          ..thumbnail = jpeg.bytes
-          ..latlng = coords?.latlng
-          ..dateTimeOriginal = dateTimeOriginal
-          ..dateTimeDigitized = dateTimeDigitized
-          ..lastModified = DateTime.now()
-          ..isModified = false
-          ;
-        await db.insert('MEDIA', row);
-        yield row;
-      } else if (path.toLowerCase().endsWith('.mp4')) {
-        final Mp4 mp4 = Mp4(path);
-        final Metadata metadata = mp4.extractMetadata();
-        final String extractedFramePath = '$path.jpg';
-        mp4.extractFrame(chrootFs, extractedFramePath);
-        DbRow row = DbRow()
-          ..type = MediaType.video
-          ..path = chrootPath
-          ..photoPath = '${chrootFs.root}$extractedFramePath'
-          ..thumbnail = metadata.thumbnail
-          ..latlng = metadata.coordinates?.latlng
-          ..dateTimeOriginal = metadata.dateTime
-          ..dateTimeDigitized = metadata.dateTime
-          ..lastModified = DateTime.now()
-          ..isModified = false
-          ;
-        await db.insert('MEDIA', row);
-        yield row;
+        if (path.toLowerCase().endsWith('jpg') || path.toLowerCase().endsWith('.jpeg')) {
+          final JpegFile jpeg = JpegFile(path);
+          final GpsCoordinates? coords = jpeg.getGpsCoordinates();
+          final DateTime? dateTimeOriginal = jpeg.getDateTimeOriginal();
+          final DateTime? dateTimeDigitized = jpeg.getDateTimeDigitized();
+          DbRow row = DbRow()
+            ..type = MediaType.photo
+            ..path = chrootPath
+            ..photoPath = chrootPath
+            ..thumbnail = jpeg.bytes
+            ..latlng = coords?.latlng
+            ..dateTimeOriginal = dateTimeOriginal
+            ..dateTimeDigitized = dateTimeDigitized
+            ..lastModified = DateTime.now()
+            ..isModified = false
+            ;
+          await db.insert('MEDIA', row);
+          yield row;
+        } else if (path.toLowerCase().endsWith('.mp4') || path.toLowerCase().endsWith('.mov')) {
+          final Mp4 mp4 = Mp4(path);
+          final Metadata metadata = mp4.extractMetadata();
+          final String extractedFramePath = '$path.jpg';
+          mp4.extractFrame(chrootFs, extractedFramePath);
+          DbRow row = DbRow()
+            ..type = MediaType.video
+            ..path = chrootPath
+            ..photoPath = '${chrootFs.root}$extractedFramePath'
+            ..thumbnail = metadata.thumbnail
+            ..latlng = metadata.coordinates?.latlng
+            ..dateTimeOriginal = metadata.dateTime
+            ..dateTimeDigitized = metadata.dateTime
+            ..lastModified = DateTime.now()
+            ..isModified = false
+            ;
+          await db.insert('MEDIA', row);
+          yield row;
+        }
       }
+    } catch (ex, stack) {
+      print(ex);
+      print(stack);
     }
   }
 
   Stream<int> _writeToDiskWorker(_WriteToDiskMessage message) async* {
-    databaseFactory = databaseFactoryFfi;
-    final Database db = await openDatabase(message.dbPath);
-    for (int i = 0; i < message.rows.length; i++) {
-      final DbRow row = message.rows[i];
-      switch (row.type) {
-        case MediaType.photo:
-          final JpegFile jpeg = JpegFile(row.path);
-          bool needsWrite = false;
-          if (row.hasDateTimeOriginal) {
-            needsWrite = true;
-            jpeg.setDateTimeOriginal(row.dateTimeOriginal!);
-          }
-          if (row.hasDateTimeDigitized) {
-            needsWrite = true;
-            jpeg.setDateTimeDigitized(row.dateTimeDigitized!);
-          }
-          if (row.hasLatlng) {
-            needsWrite = true;
-            jpeg.setGpsCoordinates(GpsCoordinates.fromString(row.latlng!));
-          }
-          if (needsWrite) {
-            jpeg.write();
-          }
-        case MediaType.video:
-          final Mp4 mp4 = Mp4(row.path);
-          await mp4.writeMetadata(dateTime: row.dateTime, coordinates: row.coords);
+    try {
+      databaseFactory = databaseFactoryFfi;
+      final Database db = await openDatabase(message.dbPath);
+      for (int i = 0; i < message.rows.length; i++) {
+        final DbRow row = message.rows[i];
+        switch (row.type) {
+          case MediaType.photo:
+            final JpegFile jpeg = JpegFile(row.path);
+            bool needsWrite = false;
+            if (row.hasDateTimeOriginal) {
+              needsWrite = true;
+              jpeg.setDateTimeOriginal(row.dateTimeOriginal!);
+            }
+            if (row.hasDateTimeDigitized) {
+              needsWrite = true;
+              jpeg.setDateTimeDigitized(row.dateTimeDigitized!);
+            }
+            if (row.hasLatlng) {
+              needsWrite = true;
+              jpeg.setGpsCoordinates(GpsCoordinates.fromString(row.latlng!));
+            }
+            if (needsWrite) {
+              jpeg.write();
+            }
+          case MediaType.video:
+            final Mp4 mp4 = Mp4(row.path);
+            await mp4.writeMetadata(dateTime: row.dateTime, coordinates: row.coords);
+        }
+        row.isModified = false;
+        await row._writeToDb(db);
+        yield i;
       }
-      row.isModified = false;
-      await row._writeToDb(db);
-      yield i;
+    } catch (ex, stack) {
+      print(ex);
+      print(stack);
     }
   }
 
   Stream<DbRow> _deleteFilesWorker(_DeleteFilesMessage message) async* {
-    databaseFactory = databaseFactoryFfi;
-    final Database db = await openDatabase(message.dbPath);
-    const FileSystem fs = LocalFileSystem();
-    for (int i = 0; i < message.rows.length; i++) {
-      final DbRow row = message.rows[i];
-      fs.file(row.path).deleteSync();
-      if (row.path != row.photoPath) {
-        fs.file(row.photoPath).deleteSync();
+    try {
+      databaseFactory = databaseFactoryFfi;
+      final Database db = await openDatabase(message.dbPath);
+      const FileSystem fs = LocalFileSystem();
+      for (int i = 0; i < message.rows.length; i++) {
+        final DbRow row = message.rows[i];
+        fs.file(row.path).deleteSync();
+        if (row.path != row.photoPath) {
+          fs.file(row.photoPath).deleteSync();
+        }
+        await db.delete('MEDIA', where: 'PATH = ?', whereArgs: [row.path]);
+        yield row;
       }
-      await db.delete('MEDIA', where: 'PATH = ?', whereArgs: [row.path]);
-      yield row;
+    } catch (ex, stack) {
+      print(ex);
+      print(stack);
     }
   }
 
   Stream<void> _exportToFolderWorker(_ExportToFolderMessage message) async* {
-    const FileSystem fs = LocalFileSystem();
-    final Directory parent = fs.directory(message.folder);
-    for (String path in message.paths) {
-      final String basename = fs.file(path).basename;
-      File target = parent.childFile(basename);
-      for (int i = 1; target.existsSync(); i++) {
-        // Resolve collision
-        target = parent.childFile('$basename ($i)');
+    try {
+      const FileSystem fs = LocalFileSystem();
+      final Directory parent = fs.directory(message.folder);
+      for (String path in message.paths) {
+        final String basename = fs.file(path).basename;
+        File target = parent.childFile(basename);
+        for (int i = 1; target.existsSync(); i++) {
+          // Resolve collision
+          target = parent.childFile('$basename ($i)');
+        }
+        fs.file(path).copySync(target.path);
+        yield null;
       }
-      fs.file(path).copySync(target.path);
-      yield null;
+    } catch (ex, stack) {
+      print(ex);
+      print(stack);
     }
   }
 }
@@ -321,7 +344,7 @@ mixin DatabaseBinding on AppBindingBase {
   final Map<String, FileModifiedHandler> _fileListeners = <String, FileModifiedHandler>{};
 
   Future<DbResults> getAllPhotos({bool modifiable = true}) async {
-    DbResults results = await db.query('MEDIA', orderBy: 'ITEM_ID');
+    DbResults results = await db.query('MEDIA', orderBy: 'DATETIME_ORIGINAL');
     if (modifiable) {
       results = DbResults.generate(results.length, (int index) {
         return DbRow.from(results[index]);
