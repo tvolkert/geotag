@@ -13,6 +13,8 @@ class Isolates {
     }, debugName: debugLabel);
   }
 
+  static String? get currentName => Isolate.current.debugName;
+
   static Stream<R> _stream<M, R>(Stream<R> Function() worker, {required String debugName}) {
     final StreamController<R> controller = StreamController<R>();
     final RawReceivePort resultPort = RawReceivePort();

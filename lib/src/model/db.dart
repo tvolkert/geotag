@@ -116,7 +116,11 @@ extension DbResultsExtensions on DbResults {
     const FileSystem fs = LocalFileSystem();
     final Directory appSupportDir = fs.directory(await getApplicationSupportDirectory());
     final _AddFilesMessage message = _AddFilesMessage._(DatabaseBinding.instance.dbFile.absolute.path, appSupportDir.absolute.path, paths);
-    final Stream<DbRow> rows = Isolates.stream<_AddFilesMessage, DbRow>(_addFilesWorker, message);
+    final Stream<DbRow> rows = Isolates.stream<_AddFilesMessage, DbRow>(
+      _addFilesWorker,
+      message,
+      debugLabel: 'addFiles',
+    );
     await for (final DbRow row in rows) {
       add(row);
       yield row;
@@ -126,7 +130,11 @@ extension DbResultsExtensions on DbResults {
   Stream<DbRow> writeFilesToDisk() async* {
     // TODO: provide hook whereby caller can cancel operation.
     final _WriteToDiskMessage message = _WriteToDiskMessage._(DatabaseBinding.instance.dbFile.absolute.path, DbResults.from(this));
-    final Stream<int> iter = Isolates.stream<_WriteToDiskMessage, int>(_writeToDiskWorker, message);
+    final Stream<int> iter = Isolates.stream<_WriteToDiskMessage, int>(
+      _writeToDiskWorker,
+      message,
+      debugLabel: 'writeFilesToDisk',
+    );
     await for (final int i in iter) {
       // The changes have already been written to disk, but the changes were
       // done in a separate isolate, so the local row object in this isolate
@@ -148,8 +156,15 @@ extension DbResultsExtensions on DbResults {
     for (int i in indexes) {
       filtered.add(DbRow.from(this[i])..putIfAbsent('index', () => i));
     }
-    final _DeleteFilesMessage message = _DeleteFilesMessage._(DatabaseBinding.instance.dbFile.absolute.path, filtered.reversed.toList());
-    final Stream<DbRow> iter = Isolates.stream<_DeleteFilesMessage, DbRow>(_deleteFilesWorker, message);
+    final _DeleteFilesMessage message = _DeleteFilesMessage._(
+      DatabaseBinding.instance.dbFile.absolute.path,
+      filtered.reversed.toList(),
+    );
+    final Stream<DbRow> iter = Isolates.stream<_DeleteFilesMessage, DbRow>(
+      _deleteFilesWorker,
+      message,
+      debugLabel: 'deleteFiles',
+    );
     await for (final DbRow row in iter) {
       final int index = row['index'] as int;
       final DbRow removed = removeAt(index);
@@ -157,9 +172,16 @@ extension DbResultsExtensions on DbResults {
     }
   }
 
-  Stream<void> exportToFolder(String folder) {
-    final _ExportToFolderMessage message = _ExportToFolderMessage._(folder, map<String>((DbRow row) => row.path));
-    return Isolates.stream<_ExportToFolderMessage, void>(_exportToFolderWorker, message);
+  Stream<DbRow> exportToFolder(String folder) async* {
+    final _ExportToFolderMessage message = _ExportToFolderMessage._(folder, DbResults.from(this));
+    final Stream<DbRow> iter = Isolates.stream<_ExportToFolderMessage, DbRow>(
+      _exportToFolderWorker,
+      message,
+      debugLabel: 'exportToFolder',
+    );
+    await for (final DbRow row in iter) {
+      yield row;
+    }
   }
 
   /// This runs in a separate isolate.
@@ -280,19 +302,21 @@ extension DbResultsExtensions on DbResults {
     }
   }
 
-  Stream<void> _exportToFolderWorker(_ExportToFolderMessage message) async* {
+  Stream<DbRow> _exportToFolderWorker(_ExportToFolderMessage message) async* {
     try {
       const FileSystem fs = LocalFileSystem();
       final Directory parent = fs.directory(message.folder);
-      for (String path in message.paths) {
+      for (DbRow row in message.rows) {
+        final String path = row.path;
         final String basename = fs.file(path).basename;
         File target = parent.childFile(basename);
         for (int i = 1; target.existsSync(); i++) {
           // Resolve collision
           target = parent.childFile('$basename ($i)');
         }
+        // TODO: file issue about this churning the UI thread.
         fs.file(path).copySync(target.path);
-        yield null;
+        yield row;
       }
     } catch (ex, stack) {
       print(ex);
@@ -324,10 +348,10 @@ class _DeleteFilesMessage {
 }
 
 class _ExportToFolderMessage {
-  const _ExportToFolderMessage._(this.folder, this.paths);
+  const _ExportToFolderMessage._(this.folder, this.rows);
 
   final String folder;
-  final Iterable<String> paths;
+  final DbResults rows;
 }
 
 mixin DatabaseBinding on AppBindingBase {
