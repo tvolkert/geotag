@@ -1,0 +1,45 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "geotag",
+            "request": "launch",
+            "type": "dart"
+        },
+        {
+            "name": "geotag (profile mode)",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile"
+        },
+        {
+            "name": "geotag (release mode)",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release"
+        },
+        {
+            "name": "platform_native",
+            "cwd": "packages/platform_native",
+            "request": "launch",
+            "type": "dart"
+        },
+        {
+            "name": "platform_native (profile mode)",
+            "cwd": "packages/platform_native",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile"
+        },
+        {
+            "name": "platform_native (release mode)",
+            "cwd": "packages/platform_native",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release"
+        }
+    ]
+}
