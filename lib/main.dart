@@ -126,7 +126,7 @@ class _MyHomePageState extends State<MyHomePage> implements HomeController {
     }
   }
 
-  // TODO: file issue about not receiving rewind or ff key events on macOS
+  // Handle rewind & fast-forward (https://github.com/flutter/flutter/issues/140764)
   KeyEventResult _handleKeyEvent(FocusNode focusNode, KeyEvent event) {
     KeyEventResult result = KeyEventResult.ignored;
     if (photos != null && _selectionController.selectedItems.isNotEmpty && event is! KeyUpEvent) {

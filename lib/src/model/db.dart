@@ -314,7 +314,7 @@ extension DbResultsExtensions on DbResults {
           // Resolve collision
           target = parent.childFile('$basename ($i)');
         }
-        // TODO: file issue about this churning the UI thread.
+        // https://github.com/flutter/flutter/issues/140763
         fs.file(path).copySync(target.path);
         yield row;
       }
