@@ -649,7 +649,7 @@ class MainImage extends StatefulWidget {
 
 class _MainImageState extends State<MainImage> {
   VideoPlayerController? _videoController;
-  bool _hasPlayedOnce = false; // TOOD: file bug against video_player
+  bool _hasPlayedOnce = false; // https://github.com/flutter/flutter/issues/140782
 
   void _handlePlayPauseVideo() {
     assert(_videoController != null);
