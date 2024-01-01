@@ -177,10 +177,9 @@ class _MyHomePageState extends State<MyHomePage> implements HomeController {
     final DbResults modifiedPhotos = photos!.where((DbRow row) => row.isModified).toList();
     assert(modifiedPhotos.isNotEmpty);
     _addTasks(modifiedPhotos.length);
-    await for (DbRow row in modifiedPhotos.writeFilesToDisk()) {
+    await for (DbRow _ in modifiedPhotos.writeFilesToDisk()) {
       // TODO: cancel operation upon `dispose`
       _handleTaskCompleted();
-      print('wrote ${row.path}');
     }
   }
 
@@ -228,9 +227,8 @@ class _MyHomePageState extends State<MyHomePage> implements HomeController {
       _selectionController.clearSelection();
       _focusNode.unfocus();
     });
-    await for (DbRow deleted in photos!.deleteFiles(indexes)) {
+    await for (DbRow _ in photos!.deleteFiles(indexes)) {
       _handleTaskCompleted();
-      print('deleted file ${deleted.path}');
       setState(() {});
     }
   }
@@ -653,7 +651,6 @@ class _MainImageState extends State<MainImage> {
 
   void _handlePlayPauseVideo() {
     assert(_videoController != null);
-    print('playing video ${widget.row!.path}');
     setState(() {
       if (_videoController!.value.isPlaying) {
         _videoController!.pause();
@@ -1041,7 +1038,7 @@ class _GeoSetterState extends State<GeoSetter> {
       ..setNavigationDelegate(
         NavigationDelegate(
           onUrlChange: (UrlChange change) {
-            print('url change! :: ${change.url}');
+            // TODO: update GPS coordinates
           },
           onNavigationRequest: (NavigationRequest request) {
             return NavigationDecision.navigate;
