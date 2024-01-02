@@ -15,9 +15,10 @@ async function initMap() {
 
   const map = new Map(document.getElementById("map"), {
     center: myLatlng,
-    zoom: 13,
+    zoom: 19,
     disableDefaultUI: true,
     zoomControl: true,
+    mapTypeId: 'satellite',
     // scaleControl: true,
     mapId: 'b56906ff9307a9d8',
   });
@@ -93,6 +94,12 @@ async function initMap() {
 
     placePinAt(place.geometry.location);
   });
+
+  window.rePin = function(coords) {
+    var splitCoords = coords.split(",");
+    let latlng = { lat: parseFloat(splitCoords[0]), lng: parseFloat(splitCoords[1]) };
+    placePinAt(latlng);
+  };
 }
 
 initMap();
