@@ -14,6 +14,7 @@ dependencies:
   file: any
   file_picker: ^5.2.4
   image: any
+  intl: any
   path_provider: any
   platform_native:
     path: packages/platform_native
