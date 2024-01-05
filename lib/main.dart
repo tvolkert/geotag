@@ -659,7 +659,6 @@ class MainImage extends StatefulWidget {
 
 class _MainImageState extends State<MainImage> {
   VideoPlayerController? _videoController;
-  bool _hasPlayedOnce = false; // https://github.com/flutter/flutter/issues/140782
 
   void _handlePlayPauseVideo() {
     assert(_videoController != null);
@@ -667,7 +666,6 @@ class _MainImageState extends State<MainImage> {
       if (_videoController!.value.isPlaying) {
         _videoController!.pause();
       } else {
-        _hasPlayedOnce = true;
         _videoController!.play();
       }
     });
@@ -681,7 +679,6 @@ class _MainImageState extends State<MainImage> {
       _videoController!.initialize().then((void _) {
         setState(() {});
       });
-      _hasPlayedOnce = false;
     }
   }
 
@@ -738,7 +735,7 @@ class _MainImageState extends State<MainImage> {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    _hasPlayedOnce ? VideoPlayer(_videoController!) : photoImage,
+                    VideoPlayer(_videoController!),
                     _VideoProgressMonitor(
                       controller: _videoController!,
                       forceIsVisible: !_videoController!.value.isPlaying,
