@@ -18,7 +18,7 @@ extension DurationExtensions on Duration {
     final int minutes = microseconds ~/ Duration.microsecondsPerMinute;
     microseconds = microseconds.remainder(Duration.microsecondsPerMinute);
 
-    final String minutesPadding = minutes < 10 ? '0' : '';
+    final String minutesPadding = hours > 0 && minutes < 10 ? '0' : '';
 
     final int seconds = microseconds ~/ Duration.microsecondsPerSecond;
     microseconds = microseconds.remainder(Duration.microsecondsPerSecond);
