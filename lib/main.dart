@@ -1,10 +1,12 @@
 // ignore_for_file: avoid_print
 
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:chicago/chicago.dart' show isPlatformCommandKeyPressed, isShiftKeyPressed, ListViewSelectionController, SelectMode, Span;
 import 'package:file/local.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
@@ -225,8 +227,15 @@ class _MyHomePageState extends State<MyHomePage> implements HomeController {
     assert(indexes.every((int index) => index < photos!.length));
     _addTasks(indexes.length);
     setState(() {
-      _selectionController.clearSelection();
-      _focusNode.unfocus();
+      final newNextIndex = _selectionController.lastSelectedIndex + 1 - indexes.length;
+      if (newNextIndex < photos!.length - indexes.length) {
+        _selectionController.selectedIndex = newNextIndex;
+      } else if (_selectionController.firstSelectedIndex > 0) {
+        _selectionController.selectedIndex = _selectionController.firstSelectedIndex - 1;
+      } else {
+        _selectionController.clearSelection();
+        _focusNode.unfocus();
+      }
     });
     await for (DbRow _ in photos!.deleteFiles(indexes)) {
       _handleTaskCompleted();
@@ -405,6 +414,7 @@ class ConfirmDeleteFilesDialog extends StatelessWidget {
                     Expanded(
                       flex: 4,
                       child: ElevatedButton(
+                        autofocus: true,
                         child: const Text('Yes'),
                         onPressed: () => Navigator.pop<bool>(context, true),
                       ),
@@ -717,46 +727,26 @@ class _MainImageState extends State<MainImage> {
         result = photoImage;
       case MediaType.video:
         assert(_videoController != null);
-        final Widget videoPlayer = Center(
-          child: AspectRatio(
-            aspectRatio: _videoController!.value.aspectRatio,
-            child: VideoPlayer(_videoController!),
-          ),
-        );
         if (!_videoController!.value.isInitialized) {
           result = photoImage;
-        } else if (_videoController!.value.isPlaying) {
-          result = Stack(
-            fit: StackFit.passthrough,
-            children: [
-              GestureDetector(
-                onTap: _handlePlayPauseVideo,
-                child: videoPlayer,
-              ),
-              Align(
-                alignment: Alignment.bottomCenter,
-                child: _VideoProgressMonitor(
-                  controller: _videoController!,
-                ),
-              ),
-            ],
-          );
         } else {
-          result = Stack(
-            fit: StackFit.passthrough,
-            children: [
-              _hasPlayedOnce ? videoPlayer : photoImage,
-              GestureDetector(
+          result = Center(
+            child: AspectRatio(
+              aspectRatio: _videoController!.value.aspectRatio,
+              child: GestureDetector(
                 onTap: _handlePlayPauseVideo,
-                child: const VideoPlayButton(),
-              ),
-              Align(
-                alignment: Alignment.bottomCenter,
-                child: _VideoProgressMonitor(
-                  controller: _videoController!,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    _hasPlayedOnce ? VideoPlayer(_videoController!) : photoImage,
+                    _VideoProgressMonitor(
+                      controller: _videoController!,
+                      forceIsVisible: !_videoController!.value.isPlaying,
+                    ),
+                  ],
                 ),
               ),
-            ],
+            ),
           );
         }
     }
@@ -768,9 +758,13 @@ class _MainImageState extends State<MainImage> {
 }
 
 class _VideoProgressMonitor extends StatefulWidget {
-  const _VideoProgressMonitor({required this.controller});
+  const _VideoProgressMonitor({
+    required this.controller,
+    required this.forceIsVisible,
+  });
 
   final VideoPlayerController controller;
+  final bool forceIsVisible;
 
   @override
   State<_VideoProgressMonitor> createState() => _VideoProgressMonitorState();
@@ -780,7 +774,21 @@ class _VideoProgressMonitorState extends State<_VideoProgressMonitor> {
   double _progress = 0;
   String _positionText = '';
   String _durationText = '';
+  bool _isPlaying = false;
   bool _pointerDown = false;
+  bool _isVisible = false;
+  Timer? _hoverTimer;
+
+  static const Duration _fadeDuration = Duration(milliseconds: 100);
+  static const Duration _visibleDuration = Duration(seconds: 3);
+
+  static const BoxDecoration _gradientDecoration = BoxDecoration(
+    gradient: LinearGradient(
+      colors: <Color>[Color(0x99000000), Colors.transparent],
+      begin: Alignment.bottomCenter,
+      end: Alignment.center,
+    ),
+  );
 
   void _handleProgressUpdate() {
     setState(() {
@@ -788,7 +796,16 @@ class _VideoProgressMonitorState extends State<_VideoProgressMonitor> {
       _progress = value.position.inMilliseconds / value.duration.inMilliseconds;
       _positionText = value.position.toSecondsPrecision();
       _durationText = value.duration.toSecondsPrecision();
+      _isPlaying = value.isPlaying;
     });
+  }
+
+  void _handlePlayPause() {
+    if (_isPlaying) {
+      widget.controller.pause();
+    } else {
+      widget.controller.play();
+    }
   }
 
   void _seekToEventPosition(PointerEvent event) {
@@ -796,6 +813,10 @@ class _VideoProgressMonitorState extends State<_VideoProgressMonitor> {
     final double percentage = event.localPosition.dx / context.size!.width;
     final Duration seekTo = total * percentage;
     widget.controller.seekTo(seekTo);
+  }
+
+  void _consumeTap() {
+    // Consume the tap event so it doesn't play/pause the video
   }
 
   void _handlePointerDown(PointerDownEvent event) {
@@ -816,6 +837,26 @@ class _VideoProgressMonitorState extends State<_VideoProgressMonitor> {
     _seekToEventPosition(event);
   }
 
+  void _handlePointerHover(PointerHoverEvent event) {
+    setState(() {
+      _isVisible = true;
+    });
+    _resetHoverTimer();
+  }
+
+  void _resetHoverTimer() {
+    _hoverTimer?.cancel();
+    _hoverTimer = Timer(_visibleDuration, () {
+      assert(mounted);
+      setState(() {
+        _isVisible = false;
+        _hoverTimer = null;
+      });
+    });
+  }
+
+  bool get isVisible => widget.forceIsVisible || _isVisible;
+
   @override
   void initState() {
     super.initState();
@@ -831,56 +872,139 @@ class _VideoProgressMonitorState extends State<_VideoProgressMonitor> {
       widget.controller.addListener(_handleProgressUpdate);
       _handleProgressUpdate();
     }
+    if (widget.forceIsVisible != oldWidget.forceIsVisible && oldWidget.forceIsVisible) {
+      _isVisible = true;
+      _resetHoverTimer();
+    }
   }
 
   @override
   void dispose() {
+    _hoverTimer?.cancel();
     widget.controller.removeListener(_handleProgressUpdate);
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.end,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          height: 21,
-          child: MouseRegion(
-            cursor: SystemMouseCursors.resizeLeftRight,
-            child: Listener(
-              behavior: HitTestBehavior.opaque,
-              onPointerDown: _handlePointerDown,
-              onPointerUp: _handlePointerUp,
-              onPointerMove: _pointerDown ? _handlePointerMove : null,
-              child: AbsorbPointer(
-                child: Align(
-                  alignment: const Alignment(-1, 0),
-                  child: SizedBox(
-                    height: 5,
-                    child: LinearProgressIndicator(
-                      value: _progress,
-                      color: Colors.grey,
+    return Listener(
+      onPointerHover: _handlePointerHover,
+      child: AnimatedOpacity(
+        opacity: isVisible ? 1 : 0,
+        duration: _fadeDuration,
+        child: DecoratedBox(
+          decoration: _gradientDecoration,
+          child: Align(
+            alignment: Alignment.bottomLeft,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  height: 21,
+                  child: GestureDetector(
+                    onTap: _consumeTap,
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: Listener(
+                        behavior: HitTestBehavior.opaque,
+                        onPointerDown: _handlePointerDown,
+                        onPointerUp: _handlePointerUp,
+                        onPointerMove: _pointerDown ? _handlePointerMove : null,
+                        child: AbsorbPointer(
+                          child: Align(
+                            alignment: const Alignment(-1, 0),
+                            child: SizedBox(
+                              height: 5,
+                              child: LinearProgressIndicator(
+                                value: _progress,
+                                color: Colors.grey,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 0, 10, 3),
+                  child: DefaultTextStyle.merge(
+                    style: const TextStyle(color: Colors.white),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: <Widget>[
+                        _PlayPauseButton(isPlaying: _isPlaying, onPlayPause: _handlePlayPause),
+                        const SizedBox(width: 10),
+                        ConstrainedBox(constraints: const BoxConstraints(minWidth: 45), child: Text(_positionText)),
+                        ConstrainedBox(constraints: const BoxConstraints(minWidth: 10), child: const Text('/')),
+                        ConstrainedBox(constraints: const BoxConstraints(minWidth: 45), child: Text(_durationText)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(10, 0, 10, 3),
-          child: Row(
-            children: <Widget>[
-              ConstrainedBox(constraints: const BoxConstraints(minWidth: 45), child: Text(_positionText)),
-              ConstrainedBox(constraints: const BoxConstraints(minWidth: 10), child: const Text('/')),
-              ConstrainedBox(constraints: const BoxConstraints(minWidth: 45), child: Text(_durationText)),
-            ],
+      ),
+    );
+  }
+}
+
+class _PlayPauseButton extends ImplicitlyAnimatedWidget {
+  const _PlayPauseButton({
+    required this.isPlaying,
+    required this.onPlayPause,
+  }) : super(duration: const Duration(milliseconds: 200));
+
+  final bool isPlaying;
+  final VoidCallback onPlayPause;
+
+  @override
+  AnimatedWidgetBaseState<_PlayPauseButton> createState() => _PlayPauseButtonState();
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<bool>('isPlaying', isPlaying));
+  }
+}
+
+class _PlayPauseButtonState extends AnimatedWidgetBaseState<_PlayPauseButton> {
+  Tween<double>? _value;
+
+  @override
+  void forEachTween(TweenVisitor<dynamic> visitor) {
+    _value = visitor(
+      _value,
+      widget.isPlaying ? PlayPauseButtonPainter.pauseSymbol : PlayPauseButtonPainter.playSymbol,
+      (dynamic value) => Tween<double>(begin: value as double)
+    ) as Tween<double>?;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onPlayPause,
+        child: SizedBox(
+          width: 40,
+          height: 50,
+          child: CustomPaint(
+            painter: PlayPauseButtonPainter(value: _value!.evaluate(animation)),
           ),
         ),
-      ],
+      ),
     );
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder description) {
+    super.debugFillProperties(description);
+    description.add(DiagnosticsProperty<Tween<double>>('value', _value, defaultValue: null));
   }
 }
 
@@ -901,7 +1025,7 @@ class VideoPlayButton extends StatelessWidget {
                 color: Color(0xaa000000),
                 borderRadius: BorderRadius.all(Radius.circular(10))
               ),
-              child: CustomPaint(painter: PlayButtonPainter()),
+              child: CustomPaint(painter: PlayPauseButtonPainter(value: PlayPauseButtonPainter.playSymbol)),
             ),
           );
         }
@@ -910,8 +1034,15 @@ class VideoPlayButton extends StatelessWidget {
   }
 }
 
-class PlayButtonPainter extends CustomPainter {
-  const PlayButtonPainter();
+class PlayPauseButtonPainter extends CustomPainter {
+  const PlayPauseButtonPainter({
+    required this.value,
+  });
+
+  final double value;
+
+  static const double playSymbol = 0;
+  static const double pauseSymbol = 1;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -919,18 +1050,56 @@ class PlayButtonPainter extends CustomPainter {
         ..style = ui.PaintingStyle.fill
         ..color = Colors.white
         ;
+    List<Offset> pauseOffsets = <Offset>[
+      Offset(size.width / 3, size.height / 3),
+      Offset(size.width * 4 / 9, size.height / 3),
+      Offset(size.width * 4 / 9, size.height * 2 / 3),
+      Offset(size.width / 3, size.height * 2 / 3),
+      Offset(size.width * 5 / 9, size.height / 3),
+      Offset(size.width * 2 / 3, size.height / 3),
+      Offset(size.width * 2 / 3, size.height * 2 / 3),
+      Offset(size.width * 5 / 9, size.height * 2 / 3),
+    ];
+    List<Offset> playOffsets = <Offset>[
+      Offset(size.width / 3, size.height / 3),
+      Offset(size.width / 2, size.height * 5 / 12),
+      Offset(size.width / 2, size.height * 7 / 12),
+      Offset(size.width / 3, size.height * 2 / 3),
+      Offset(size.width / 2, size.height * 5 / 12),
+      Offset(size.width * 2 / 3, size.height / 2),
+      Offset(size.width * 2 / 3, size.height / 2),
+      Offset(size.width / 2, size.height * 7 / 12),
+    ];
+
+    List<Offset> offsets;
+    if (value == playSymbol) {
+      offsets = playOffsets;
+    } else if (value == pauseSymbol) {
+      offsets = pauseOffsets;
+    } else {
+      offsets = List<Offset>.generate(playOffsets.length, (int index) {
+        return Offset.lerp(playOffsets[index], pauseOffsets[index], value)!;
+      });
+    }
+
     ui.Path path = ui.Path()
-        ..moveTo(size.width / 3, size.height / 3)
-        ..lineTo(size.width * 2 / 3, size.height / 2)
-        ..lineTo(size.width / 3, size.height * 2 / 3)
+        ..moveTo(offsets[0].dx, offsets[0].dy)
+        ..lineTo(offsets[1].dx, offsets[1].dy)
+        ..lineTo(offsets[2].dx, offsets[2].dy)
+        ..lineTo(offsets[3].dx, offsets[3].dy)
+        ..close()
+        ..moveTo(offsets[4].dx, offsets[4].dy)
+        ..lineTo(offsets[5].dx, offsets[5].dy)
+        ..lineTo(offsets[6].dx, offsets[6].dy)
+        ..lineTo(offsets[7].dx, offsets[7].dy)
         ..close()
         ;
     canvas.drawPath(path, paint);
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) {
-    return false;
+  bool shouldRepaint(covariant PlayPauseButtonPainter oldDelegate) {
+    return value != oldDelegate.value;
   }
 }
 
