@@ -4,8 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import 'db.dart';
+import 'tasks.dart';
 
-class GeotagAppBinding extends AppBindingBase with DatabaseBinding {
+class GeotagAppBinding extends AppBindingBase with ChangeNotifier, DatabaseBinding, TaskBinding {
   /// Creates and initializes the application binding if necessary.
   ///
   /// Applications should call this method before calling [runApp].
