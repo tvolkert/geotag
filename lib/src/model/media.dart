@@ -99,7 +99,7 @@ class MediaItem {
   /// is called.
   String? get latlng => _row['LATLNG'] as String?;
   set latlng(String? value) {
-    assert(value == null || RegExp(r'^[0-9]+\.?[0-9]*, *[0-9]+\.?[0-9]*$').hasMatch(value));
+    assert(value == null || RegExp(r'^-?[0-9]+\.?[0-9]*, *-?[0-9]+\.?[0-9]*$').hasMatch(value));
     _row['LATLNG'] = value;
   }
 
@@ -135,6 +135,7 @@ class MediaItem {
         ? DateTime.fromMillisecondsSinceEpoch(_row['DATETIME_ORIGINAL'] as int)
         : null;
   }
+
   set dateTimeOriginal(DateTime? value) {
     _row['DATETIME_ORIGINAL'] = value?.millisecondsSinceEpoch;
   }
@@ -172,6 +173,7 @@ class MediaItem {
         ? DateTime.fromMillisecondsSinceEpoch(_row['DATETIME_DIGITIZED'] as int)
         : null;
   }
+
   set dateTimeDigitized(DateTime? value) {
     _row['DATETIME_DIGITIZED'] = value?.millisecondsSinceEpoch;
   }
@@ -208,6 +210,7 @@ class MediaItem {
   DateTime get lastModified {
     return DateTime.fromMillisecondsSinceEpoch(_row['DATETIME_LAST_MODIFIED'] as int);
   }
+
   set lastModified(DateTime value) {
     _row['DATETIME_LAST_MODIFIED'] = value.millisecondsSinceEpoch;
   }
@@ -245,17 +248,20 @@ class MediaItem {
 
   @override
   int get hashCode => path.hashCode;
-  
+
   @override
   bool operator ==(Object other) {
     return other is MediaItem && other.path == path;
   }
 }
 
-class MediaItems /*with Iterable<MediaItem> */{
+class MediaItems {
   MediaItems._from(this._items);
 
-  MediaItems.fromDbResults(DbResults results) : _items = List<MediaItem>.generate(results.length, (int index) => MediaItem.fromDbRow(results[index]));
+  MediaItems.fromDbResults(DbResults results)
+      : _items = List<MediaItem>.generate(results.length, (int index) {
+          return MediaItem.fromDbRow(results[index]);
+        });
 
   final List<MediaItem> _items;
 
@@ -309,9 +315,8 @@ class MediaItems /*with Iterable<MediaItem> */{
       // database, but the changes were done in a separate isolate, so the
       // local row object in this isolate needs to be updated to match.
       _items[i]
-          ..isModified = false
-          .._notify()
-          ;
+        ..isModified = false
+        .._notify();
       yield _items[i];
     }
   }
@@ -320,9 +325,11 @@ class MediaItems /*with Iterable<MediaItem> */{
     // TODO: provide hook whereby caller can cancel operation.
     assert(indexes.length <= _items.length);
     assert(indexes.every((int index) => index < _items.length));
+    Map<String, int> lookup = <String, int>{};
     List<MediaItem> filtered = List<MediaItem>.empty(growable: true);
     for (int i in indexes) {
       filtered.add(_items[i]);
+      lookup[_items[i].path] = i;
     }
     final _DeleteFilesMessage message = _DeleteFilesMessage._(
       DatabaseBinding.instance.dbFile.absolute.path,
@@ -333,8 +340,11 @@ class MediaItems /*with Iterable<MediaItem> */{
       message,
       debugLabel: 'deleteFiles',
     );
-    await for (final int index in iter) {
-      final MediaItem removed = _items.removeAt(index);
+    await for (final int filteredIndex in iter) {
+      final int? index = lookup[filtered[filteredIndex].path];
+      assert(index != null);
+      final MediaItem removed = _items.removeAt(index!);
+      assert(removed.path == filtered[filteredIndex].path);
       yield removed;
       MediaBinding.instance._notifyCollectionChanged();
     }
@@ -390,8 +400,7 @@ class MediaItems /*with Iterable<MediaItem> */{
             ..dateTimeOriginal = dateTimeOriginal
             ..dateTimeDigitized = dateTimeDigitized
             ..lastModified = DateTime.now()
-            ..isModified = false
-            ;
+            ..isModified = false;
           await db.insert('MEDIA', item._row);
           yield item._row;
         } else if (path.toLowerCase().endsWith('.mp4') || path.toLowerCase().endsWith('.mov')) {
@@ -408,8 +417,7 @@ class MediaItems /*with Iterable<MediaItem> */{
             ..dateTimeOriginal = metadata.dateTime
             ..dateTimeDigitized = metadata.dateTime
             ..lastModified = DateTime.now()
-            ..isModified = false
-            ;
+            ..isModified = false;
           await db.insert('MEDIA', item._row);
           yield item._row;
         }

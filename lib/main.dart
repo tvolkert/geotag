@@ -370,13 +370,15 @@ class _MetadataPanelState extends State<MetadataPanel> {
   Future<void> _saveEdits() async {
     try {
       final GpsCoordinates coords = GpsCoordinates.fromString(latlngController.text);
-      widget.item!
-          ..latlng = coords.latlng
-          ..isModified = true
-          ..lastModified = DateTime.now()
-          ;
-      await widget.item!.commit();
-      _updateRow();
+      if (widget.item!.latlng != coords.latlng) {
+        widget.item!
+            ..latlng = coords.latlng
+            ..isModified = true
+            ..lastModified = DateTime.now()
+            ;
+        await widget.item!.commit();
+        _updateRow();
+      }
     } on FormatException {
       print('invalid gps coordinates');
     }
