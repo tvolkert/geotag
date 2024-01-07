@@ -262,7 +262,7 @@ class _VideoProgressMonitorState extends State<_VideoProgressMonitor> {
       widget.controller.addListener(_handleProgressUpdate);
       _handleProgressUpdate();
     }
-    if (widget.forceIsVisible && !oldWidget.forceIsVisible) {
+    if (widget.forceIsVisible != oldWidget.forceIsVisible) {
       _isVisible = true;
       _resetHoverTimer();
     }
