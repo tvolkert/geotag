@@ -203,21 +203,28 @@ class _VideoProgressMonitorState extends State<_VideoProgressMonitor> {
   }
 
   void _handlePointerDown(PointerDownEvent event) {
-    _seekToPosition(event);
-    setState(() {
-      _pointerDown = true;
-    });
+    if (isVisible) {
+      _seekToPosition(event);
+      setState(() {
+        _pointerDown = true;
+      });
+    }
   }
 
   void _handlePointerUp(PointerUpEvent event) {
-    setState(() {
-      _pointerDown = false;
-    });
+    if (_pointerDown) {
+      // [_pointerDown] could already be false if e.g. the pointer down event
+      // was received while [isVisible] was false.
+      setState(() {
+        _pointerDown = false;
+      });
+    }
   }
 
   void _handlePointerMove(PointerMoveEvent event) {
-    assert(_pointerDown);
-    _seekToPosition(event);
+    if (_pointerDown) {
+      _seekToPosition(event);
+    }
   }
 
   void _handlePointerHover(PointerHoverEvent event) {
@@ -295,7 +302,7 @@ class _VideoProgressMonitorState extends State<_VideoProgressMonitor> {
                   child: GestureDetector(
                     onTap: _consumeTap,
                     child: MouseRegion(
-                      cursor: SystemMouseCursors.click,
+                      cursor: isVisible ? SystemMouseCursors.click : SystemMouseCursors.basic,
                       child: Listener(
                         behavior: HitTestBehavior.opaque,
                         onPointerDown: _handlePointerDown,
