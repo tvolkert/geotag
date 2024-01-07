@@ -9,12 +9,26 @@ class _TaskProgress {
   int total;
 }
 
-mixin TaskBinding on AppBindingBase, ChangeNotifier {
+class _TaskNotifier extends Object with ChangeNotifier {
+  @override
+  void notifyListeners() => super.notifyListeners();
+}
+
+mixin TaskBinding on AppBindingBase {
   /// The singleton instance of this object.
   static late TaskBinding _instance;
   static TaskBinding get instance => _instance;
 
+  final _TaskNotifier _notifier = _TaskNotifier();
   _TaskProgress? _progress;
+
+  void addTaskListener(VoidCallback listener) {
+    _notifier.addListener(listener);
+  }
+
+  void removeTaskListener(VoidCallback listener) {
+    _notifier.removeListener(listener);
+  }
 
   void addTasks(int newTaskCount) {
     if (_progress == null) {
@@ -22,7 +36,7 @@ mixin TaskBinding on AppBindingBase, ChangeNotifier {
     } else {
       _progress!.total += newTaskCount;
     }
-    notifyListeners();
+    _notifier.notifyListeners();
   }
 
   void onTaskCompleted() {
@@ -31,7 +45,7 @@ mixin TaskBinding on AppBindingBase, ChangeNotifier {
     if (_progress!.completed == _progress!.total) {
       _progress = null;
     }
-    notifyListeners();
+    _notifier.notifyListeners();
   }
 
   double? get progress {

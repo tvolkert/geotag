@@ -4,9 +4,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import 'db.dart';
+import 'files.dart';
+import 'media.dart';
 import 'tasks.dart';
 
-class GeotagAppBinding extends AppBindingBase with ChangeNotifier, DatabaseBinding, TaskBinding {
+class GeotagAppBinding extends AppBindingBase
+    with FilesBinding, DatabaseBinding, MediaBinding, TaskBinding {
   /// Creates and initializes the application binding if necessary.
   ///
   /// Applications should call this method before calling [runApp].
@@ -42,7 +45,8 @@ abstract class AppBindingBase {
   Future<void> get initialized => _initialized;
 
   /// The initialization method. Subclasses override this method to hook into
-  /// the app. Subclasses must call `super.initInstances()`.
+  /// the app. Subclasses must call `await super.initInstances()` as the first
+  /// line in their method.
   ///
   /// By convention, if the service is to be provided as a singleton, it should
   /// be exposed as `MixinClassName.instance`, a static getter that returns

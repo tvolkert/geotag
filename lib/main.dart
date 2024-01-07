@@ -6,14 +6,13 @@ import 'package:file/file.dart';
 import 'package:file/local.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import 'src/model/app.dart';
-import 'src/model/db.dart';
 import 'src/model/gps.dart';
+import 'src/model/media.dart';
 import 'src/model/tasks.dart';
 import 'src/ui/date_time_editor.dart';
 import 'src/ui/thumbnail_list.dart';
@@ -35,7 +34,7 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
-      home: const MyHomePage(),
+      home: const GeotagHome(),
     );
   }
 }
@@ -44,23 +43,24 @@ abstract class HomeController {
   void setSelectedItems(Iterable<int> indexes);
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key});
+class GeotagHome extends StatefulWidget {
+  const GeotagHome({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<GeotagHome> createState() => _GeotagHomeState();
 
   static HomeController of(BuildContext context) {
     return context.getInheritedWidgetOfExactType<_HomeScope>()!.state;
   }
 }
 
-class _MyHomePageState extends State<MyHomePage> implements HomeController {
+class _GeotagHomeState extends State<GeotagHome> implements HomeController {
   late final FocusNode _focusNode;
   final VideoPlayerPlayPauseController playPauseController = VideoPlayerPlayPauseController();
   double? _taskProgress;
-  DbResults? photos;
   Iterable<int> _selectedItems = const Iterable<int>.empty();
+
+  MediaItems get items => MediaBinding.instance.items;
 
   @override
   void setSelectedItems(Iterable<int> indexes) {
@@ -77,12 +77,11 @@ class _MyHomePageState extends State<MyHomePage> implements HomeController {
       lockParentWindow: true,
     );
     if (result != null) {
-      assert(photos != null);
       TaskBinding.instance.addTasks(result.files.length);
-      final Stream<DbRow> rows = photos!.addFiles(result.files.map<String>((PlatformFile file) {
+      final Stream<MediaItem> added = items.addFiles(result.files.map<String>((PlatformFile file) {
         return file.path!;
       }));
-      await for (final DbRow _ in rows) {
+      await for (final MediaItem _ in added) {
         TaskBinding.instance.onTaskCompleted();
         if (mounted) {
           setState(() {});
@@ -91,14 +90,14 @@ class _MyHomePageState extends State<MyHomePage> implements HomeController {
     }
   }
 
-  bool get hasUnsavedEdits => photos?.where((DbRow row) => row.isModified).isNotEmpty ?? false;
-
   KeyEventResult _handleKeyEvent(FocusNode focusNode, KeyEvent event) {
     KeyEventResult result = KeyEventResult.ignored;
     // TODO: handle rewind & fast-forward (https://github.com/flutter/flutter/issues/140764)
-    if (_selectedItems.length == 1 && event is! KeyUpEvent && event.logicalKey == LogicalKeyboardKey.space) {
-      final DbRow row = photos![_selectedItems.first];
-      if (row.type == MediaType.video) {
+    if (_selectedItems.length == 1 &&
+        event is! KeyUpEvent &&
+        event.logicalKey == LogicalKeyboardKey.space) {
+      final MediaItem item = items[_selectedItems.first];
+      if (item.type == MediaType.video) {
         playPauseController.playPause();
         result = KeyEventResult.handled;
       }
@@ -107,11 +106,10 @@ class _MyHomePageState extends State<MyHomePage> implements HomeController {
   }
 
   Future<void> _writeEditsToDisk() async {
-    assert(photos != null);
-    final DbResults modifiedPhotos = photos!.where((DbRow row) => row.isModified).toList();
-    assert(modifiedPhotos.isNotEmpty);
-    TaskBinding.instance.addTasks(modifiedPhotos.length);
-    await for (DbRow _ in modifiedPhotos.writeFilesToDisk()) {
+    final MediaItems modified = items.whereModified;
+    assert(modified.isNotEmpty);
+    TaskBinding.instance.addTasks(modified.length);
+    await for (MediaItem _ in modified.writeFilesToDisk()) {
       // TODO: cancel operation upon `dispose`
       TaskBinding.instance.onTaskCompleted();
     }
@@ -122,9 +120,9 @@ class _MyHomePageState extends State<MyHomePage> implements HomeController {
       dialogTitle: 'Export to folder',
       lockParentWindow: true,
     );
-    if (path != null && photos != null) {
-      TaskBinding.instance.addTasks(photos!.length);
-      await for (void _ in photos!.exportToFolder(path)) {
+    if (path != null) {
+      TaskBinding.instance.addTasks(items.length);
+      await for (void _ in items.exportToFolder(path)) {
         TaskBinding.instance.onTaskCompleted();
       }
     }
@@ -150,7 +148,7 @@ class _MyHomePageState extends State<MyHomePage> implements HomeController {
 
   int? get selectedIndex => _selectedItems.singleOrNull;
 
-  DbRow? get selectedRow => selectedIndex == null ? null : photos?[selectedIndex!];
+  MediaItem? get selectedItem => selectedIndex == null ? null : items[selectedIndex!];
 
   void _handleTasksChanged() {
     setState(() {
@@ -162,18 +160,12 @@ class _MyHomePageState extends State<MyHomePage> implements HomeController {
   void initState() {
     super.initState();
     _focusNode = FocusNode();
-    TaskBinding.instance.addListener(_handleTasksChanged);
-    SchedulerBinding.instance.addPostFrameCallback((Duration timeStamp) {
-      () async {
-        photos = await DatabaseBinding.instance.getAllPhotos();
-        setState(() {});
-      }();
-    });
+    TaskBinding.instance.addTaskListener(_handleTasksChanged);
   }
 
   @override
   void dispose() {
-    TaskBinding.instance.removeListener(_handleTasksChanged);
+    TaskBinding.instance.removeTaskListener(_handleTasksChanged);
     _focusNode.dispose();
     super.dispose();
   }
@@ -195,7 +187,7 @@ class _MyHomePageState extends State<MyHomePage> implements HomeController {
             IconButton(
               icon: const Icon(Icons.save),
               tooltip: 'Save all edits',
-              onPressed: _taskProgress == null && hasUnsavedEdits ? _writeEditsToDisk : null,
+              onPressed: _taskProgress == null && items.containsModified ? _writeEditsToDisk : null,
             ),
             IconButton(
               icon: const Icon(Icons.drive_folder_upload),
@@ -211,12 +203,12 @@ class _MyHomePageState extends State<MyHomePage> implements HomeController {
             children: <Widget>[
               Expanded(
                 child: MainArea(
-                  row: selectedRow,
+                  item: selectedItem,
                   playPauseController: playPauseController,
                 ),
               ),
               const Divider(height: 1),
-              ThumbnailList(photos: photos),
+              const ThumbnailList(),
             ],
           ),
         ),
@@ -231,7 +223,7 @@ class _HomeScope extends InheritedWidget {
     required this.state,
   });
 
-  final _MyHomePageState state;
+  final _GeotagHomeState state;
 
   @override
   bool updateShouldNotify(covariant _HomeScope oldWidget) => false;
@@ -240,11 +232,11 @@ class _HomeScope extends InheritedWidget {
 class MainArea extends StatelessWidget {
   const MainArea({
     super.key,
-    required this.row,
+    required this.item,
     required this.playPauseController,
   });
 
-  final DbRow? row;
+  final MediaItem? item;
   final VideoPlayerPlayPauseController playPauseController;
 
   @override
@@ -255,13 +247,13 @@ class MainArea extends StatelessWidget {
       children: <Widget>[
         Expanded(
           child: MainImage(
-            row: row,
+            item: item,
             playPauseController: playPauseController,
           ),
         ),
         SizedBox(
           width: 500,
-          child: MetadataPanel(row),
+          child: MetadataPanel(item),
         ),
       ],
     );
@@ -271,28 +263,28 @@ class MainArea extends StatelessWidget {
 class MainImage extends StatelessWidget {
   const MainImage({
     super.key,
-    required this.row,
+    required this.item,
     required this.playPauseController,
     this.fs = const LocalFileSystem(),
   });
 
-  final DbRow? row;
+  final MediaItem? item;
   final VideoPlayerPlayPauseController playPauseController;
   final FileSystem fs;
 
   @override
   Widget build(BuildContext context) {
-    if (row == null) {
+    if (item == null) {
       return Container();
     }
 
     Widget result;
-    switch (row!.type) {
+    switch (item!.type) {
       case MediaType.photo:
-        result = Image.file(fs.file(row!.photoPath));
+        result = Image.file(fs.file(item!.photoPath));
       case MediaType.video:
         return VideoPlayer(
-          row: row!,
+          item: item!,
           playPauseController: playPauseController,
           fs: fs,
         );
@@ -305,9 +297,9 @@ class MainImage extends StatelessWidget {
 }
 
 class MetadataPanel extends StatefulWidget {
-  const MetadataPanel(this.row, {super.key});
+  const MetadataPanel(this.item, {super.key});
 
-  final DbRow? row;
+  final MediaItem? item;
 
   @override
   State<MetadataPanel> createState() => _MetadataPanelState();
@@ -321,15 +313,17 @@ class _MetadataPanelState extends State<MetadataPanel> {
   late final WebViewController webViewController;
 
   Future<void> _updateRow({bool firstRun = false}) async {
-    if (widget.row == null) {
+    if (widget.item == null) {
       latlngController.text = '';
     } else {
       String? currentUrl = await webViewController.currentUrl();
-      if (widget.row!.hasLatlng) {
-        final GpsCoordinates coords = widget.row!.coords!;
+      if (widget.item!.hasLatlng) {
+        final GpsCoordinates coords = widget.item!.coords!;
         latlngController.text = '${coords.latitude}, ${coords.longitude}';
         if (firstRun || currentUrl == null) {
-          webViewController.loadRequest(Uri.parse('https://tvolkert.dev/map.html?initial=${coords.latitude},${coords.longitude}'));
+          webViewController.loadRequest(
+            Uri.parse('https://tvolkert.dev/map.html?initial=${coords.latitude},${coords.longitude}'),
+          );
         } else {
           webViewController.runJavaScript('window.rePin("${coords.latitude},${coords.longitude}")');
         }
@@ -342,15 +336,15 @@ class _MetadataPanelState extends State<MetadataPanel> {
   }
 
   void _handleEditDateTime() async {
-    DateTime? newDateTime = await DateTimeEditorDialog.show(context, widget.row!.dateTime);
+    DateTime? newDateTime = await DateTimeEditorDialog.show(context, widget.item!.dateTime);
     if (newDateTime != null) {
-      widget.row!
+      widget.item!
           ..dateTimeOriginal = newDateTime
           ..dateTimeDigitized = newDateTime
           ..isModified = true
           ..lastModified = DateTime.now()
           ;
-      await widget.row!.commit();
+      await widget.item!.commit();
       _updateRow();
     }
   }
@@ -376,12 +370,12 @@ class _MetadataPanelState extends State<MetadataPanel> {
   Future<void> _saveEdits() async {
     try {
       final GpsCoordinates coords = GpsCoordinates.fromString(latlngController.text);
-      widget.row!
+      widget.item!
           ..latlng = coords.latlng
           ..isModified = true
           ..lastModified = DateTime.now()
           ;
-      await widget.row!.commit();
+      await widget.item!.commit();
       _updateRow();
     } on FormatException {
       print('invalid gps coordinates');
@@ -429,7 +423,7 @@ class _MetadataPanelState extends State<MetadataPanel> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.row == null) {
+    if (widget.item == null) {
       return Container();
     }
 
@@ -456,8 +450,8 @@ class _MetadataPanelState extends State<MetadataPanel> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(DateFormat('MMM d, yyyy').format(widget.row!.dateTime ?? DateTime.now())),
-                  Text(DateFormat('E, h:mm a').format(widget.row!.dateTime ?? DateTime.now())),
+                  Text(DateFormat('MMM d, yyyy').format(widget.item!.dateTime ?? DateTime.now())),
+                  Text(DateFormat('E, h:mm a').format(widget.item!.dateTime ?? DateTime.now())),
                 ],
               ),
               Expanded(child: Container()),
@@ -475,7 +469,7 @@ class _MetadataPanelState extends State<MetadataPanel> {
             children: <Widget>[
               const Icon(Icons.photo_outlined),
               const SizedBox(width: 30),
-              SelectableText(widget.row!.path.split('/').last),
+              SelectableText(widget.item!.path.split('/').last),
             ],
           ),
         ),

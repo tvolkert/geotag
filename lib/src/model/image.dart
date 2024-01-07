@@ -5,7 +5,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart';
 
-import 'exif_date_time.dart';
+import '../extensions/date_time.dart';
 import 'exif.dart';
 import 'gps.dart';
 
@@ -14,9 +14,10 @@ class JpegFile {
       : assert(path.toLowerCase().endsWith('jpg') || path.toLowerCase().endsWith('.jpeg'));
 
   final String path;
-
   Image? _image;
-  @protected Image get image => _image ??= _decode();
+
+  @protected
+  Image get image => _image ??= _decode();
 
   Uint8List get bytes => image.toUint8List();
 

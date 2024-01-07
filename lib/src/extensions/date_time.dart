@@ -1,5 +1,18 @@
 import 'package:image/image.dart';
 
+extension VideoDateTime on DateTime {
+  String toVideoString() {
+    // 2010-01-01 00:00:00
+    final String year = this.year.toString().padLeft(4, '0');
+    final String month = this.month.toString().padLeft(2, '0');
+    final String day = this.day.toString().padLeft(2, '0');
+    final String hour = this.hour.toString().padLeft(2, '0');
+    final String minute = this.minute.toString().padLeft(2, '0');
+    final String second = this.second.toString().padLeft(2, '0');
+    return '$year-$month-$day $hour:$minute:$second';
+  }
+}
+
 extension ExifDateTime on DateTime {
   static DateTime? original(IfdDirectory ifd) => _extract(ifd, _dateTimeOriginalTagName);
   static DateTime? digitized(IfdDirectory ifd) => _extract(ifd, _dateTimeDigitizedTagName);
@@ -7,7 +20,7 @@ extension ExifDateTime on DateTime {
   static const String _dateTimeOriginalTagName = 'DateTimeOriginal';
   static const String _dateTimeDigitizedTagName = 'DateTimeDigitized';
 
-  static const String _format = r'([0-9]{4}):([0-9]{2}):([0-9]{2}) ([0-9]{2}):([0-9]{2}):([0-9]{2})';
+  static const String _fmt = r'([0-9]{4}):([0-9]{2}):([0-9]{2}) ([0-9]{2}):([0-9]{2}):([0-9]{2})';
 
   static DateTime? _extract(IfdDirectory ifd, String tagName) {
     final Map<int, IfdValue> data = ifd.data;
@@ -16,7 +29,7 @@ extension ExifDateTime on DateTime {
       return null;
     }
     assert(dateTime.type == IfdValueType.ascii);
-    final RegExp re = RegExp(_format);
+    final RegExp re = RegExp(_fmt);
     final RegExpMatch? match = re.firstMatch(dateTime.toString());
     assert(match != null);
     final int year = int.parse(match!.group(1)!);

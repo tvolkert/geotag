@@ -9,7 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart' as vp;
 
 import '../extensions/duration.dart';
-import '../model/db.dart';
+import '../model/media.dart';
 
 class VideoPlaySymbol extends StatelessWidget {
   const VideoPlaySymbol({super.key});
@@ -26,12 +26,14 @@ class VideoPlaySymbol extends StatelessWidget {
             child: const DecoratedBox(
               decoration: BoxDecoration(
                 color: Color(0xaa000000),
-                borderRadius: BorderRadius.all(Radius.circular(10))
+                borderRadius: BorderRadius.all(Radius.circular(10)),
               ),
-              child: CustomPaint(painter: _PlayPauseButtonPainter(value: _PlayPauseButtonPainter.playSymbol)),
+              child: CustomPaint(
+                painter: _PlayPauseButtonPainter(value: _PlayPauseButtonPainter.playSymbol),
+              ),
             ),
           );
-        }
+        },
       ),
     );
   }
@@ -48,12 +50,12 @@ final class VideoPlayerPlayPauseController {
 class VideoPlayer extends StatefulWidget {
   VideoPlayer({
     super.key,
-    required this.row,
+    required this.item,
     required this.playPauseController,
     this.fs = const LocalFileSystem(),
-  }) : assert(row.type == MediaType.video);
+  }) : assert(item.type == MediaType.video);
 
-  final DbRow row;
+  final MediaItem item;
   final VideoPlayerPlayPauseController playPauseController;
   final FileSystem fs;
 
@@ -77,7 +79,7 @@ class _VideoPlayerState extends State<VideoPlayer> {
 
   void _initializeVideoController() {
     _isControllerInitialized = false;
-    _controller = vp.VideoPlayerController.file(widget.fs.file(widget.row.path));
+    _controller = vp.VideoPlayerController.file(widget.fs.file(widget.item.path));
     _controller.setLooping(true);
     _controller.initialize().then((void _) {
       setState(() {
@@ -96,7 +98,7 @@ class _VideoPlayerState extends State<VideoPlayer> {
   @override
   void didUpdateWidget(covariant VideoPlayer oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.row.path != oldWidget.row.path) {
+    if (widget.item.path != oldWidget.item.path) {
       // TODO: Can we just update it instead of disposing and re-creating?
       _controller.pause();
       _controller.dispose();
@@ -117,7 +119,7 @@ class _VideoPlayerState extends State<VideoPlayer> {
 
   @override
   Widget build(BuildContext context) {
-    Widget result = Image.file(widget.fs.file(widget.row.photoPath));
+    Widget result = Image.file(widget.fs.file(widget.item.photoPath));
     if (_isControllerInitialized) {
       result = Center(
         child: AspectRatio(
@@ -324,9 +326,18 @@ class _VideoProgressMonitorState extends State<_VideoProgressMonitor> {
                       children: <Widget>[
                         _PlayPauseButton(isPlaying: _isPlaying, onPlayPause: _handlePlayPause),
                         const SizedBox(width: 10),
-                        ConstrainedBox(constraints: const BoxConstraints(minWidth: 45), child: Text(_positionText)),
-                        ConstrainedBox(constraints: const BoxConstraints(minWidth: 10), child: const Text('/')),
-                        ConstrainedBox(constraints: const BoxConstraints(minWidth: 45), child: Text(_durationText)),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(minWidth: 45),
+                          child: Text(_positionText),
+                        ),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(minWidth: 10),
+                          child: const Text('/'),
+                        ),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(minWidth: 45),
+                          child: Text(_durationText),
+                        ),
                       ],
                     ),
                   ),

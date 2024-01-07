@@ -4,15 +4,13 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import '../../main.dart';
-import '../model/db.dart';
+import '../model/media.dart';
 import '../model/tasks.dart';
 import 'confirm_delete_files.dart';
 import 'video_player.dart';
 
 class ThumbnailList extends StatefulWidget {
-  const ThumbnailList({super.key, required this.photos});
-
-  final DbResults? photos;
+  const ThumbnailList({super.key});
 
   @override
   State<ThumbnailList> createState() => _ThumbnailListState();
@@ -26,14 +24,17 @@ class _ThumbnailListState extends State<ThumbnailList> {
 
   static const double itemExtent = 175;
 
+  MediaItems get items => MediaBinding.instance.items;
+
   void _handleSelectionChanged() {
-    MyHomePage.of(context).setSelectedItems(_selectionController.selectedItems);
+    GeotagHome.of(context).setSelectedItems(_selectionController.selectedItems);
   }
 
   KeyEventResult _handleKeyEvent(FocusNode focusNode, KeyEvent event) {
     KeyEventResult result = KeyEventResult.ignored;
-    if (widget.photos != null && _selectionController.selectedItems.isNotEmpty && event is! KeyUpEvent) {
-      if (event.logicalKey == LogicalKeyboardKey.delete || event.logicalKey == LogicalKeyboardKey.backspace) {
+    if (_selectionController.selectedItems.isNotEmpty && event is! KeyUpEvent) {
+      if (event.logicalKey == LogicalKeyboardKey.delete ||
+          event.logicalKey == LogicalKeyboardKey.backspace) {
         () async {
           if (await ConfirmDeleteFilesDialog.show(context)) {
             _deleteItems(_selectionController.selectedItems.toList());
@@ -45,16 +46,22 @@ class _ThumbnailListState extends State<ThumbnailList> {
         if (newSelectedIndex >= 0) {
           setState(() {
             _selectionController.selectedIndex = newSelectedIndex;
-            _scrollToVisibleController.notifyListener(newSelectedIndex, ScrollPositionAlignmentPolicy.keepVisibleAtStart);
+            _scrollToVisibleController.notifyListener(
+              newSelectedIndex,
+              ScrollPositionAlignmentPolicy.keepVisibleAtStart,
+            );
           });
         }
         result = KeyEventResult.handled;
       } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
         final int newSelectedIndex = _selectionController.lastSelectedIndex + 1;
-        if (newSelectedIndex < widget.photos!.length) {
+        if (newSelectedIndex < items.length) {
           setState(() {
             _selectionController.selectedIndex = newSelectedIndex;
-            _scrollToVisibleController.notifyListener(newSelectedIndex, ScrollPositionAlignmentPolicy.keepVisibleAtEnd);
+            _scrollToVisibleController.notifyListener(
+              newSelectedIndex,
+              ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+            );
           });
         }
         result = KeyEventResult.handled;
@@ -89,16 +96,15 @@ class _ThumbnailListState extends State<ThumbnailList> {
 
   int? get selectedIndex => _selectionController.selectedItems.singleOrNull;
 
-  DbRow? get selectedRow => selectedIndex == null ? null : widget.photos?[selectedIndex!];
+  MediaItem? get selectedItem => selectedIndex == null ? null : items[selectedIndex!];
 
   Future<void> _deleteItems(Iterable<int> indexes) async {
-    assert(widget.photos != null);
-    assert(indexes.length <= widget.photos!.length);
-    assert(indexes.every((int index) => index < widget.photos!.length));
+    assert(indexes.length <= items.length);
+    assert(indexes.every((int index) => index < items.length));
     TaskBinding.instance.addTasks(indexes.length);
     setState(() {
       final newNextIndex = _selectionController.lastSelectedIndex + 1 - indexes.length;
-      if (newNextIndex < widget.photos!.length - indexes.length) {
+      if (newNextIndex < items.length - indexes.length) {
         _selectionController.selectedIndex = newNextIndex;
       } else if (_selectionController.firstSelectedIndex > 0) {
         _selectionController.selectedIndex = _selectionController.firstSelectedIndex - 1;
@@ -107,7 +113,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
         _focusNode.unfocus();
       }
     });
-    await for (DbRow _ in widget.photos!.deleteFiles(indexes)) {
+    await for (MediaItem _ in items.deleteFiles(indexes)) {
       TaskBinding.instance.onTaskCompleted();
       setState(() {});
     }
@@ -146,7 +152,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
             itemExtent: itemExtent,
             controller: _scrollController,
             scrollDirection: Axis.horizontal,
-            itemCount: widget.photos?.length ?? 0,
+            itemCount: items.length,
             itemBuilder: (BuildContext context, int index) {
               return Padding(
                 padding: const EdgeInsets.all(5),
@@ -154,7 +160,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
                   onTap: () => _handleTap(index),
                   child: _Thumbnail(
                     index: index,
-                    row: widget.photos![index],
+                    item: items[index],
                     isSelected: _selectionController.isItemSelected(index),
                     controller: _scrollToVisibleController,
                   ),
@@ -211,47 +217,48 @@ mixin _ScrollToVisibleListener on State<_Thumbnail> {
 class _Thumbnail extends StatefulWidget {
   _Thumbnail({
     required this.index,
-    required this.row,
+    required this.item,
     required this.isSelected,
     required this.controller,
-  }) : super(key: ValueKey<String>(row.path));
+  }) : super(key: ValueKey<String>(item.path));
 
   final int index;
-  final DbRow row;
+  final MediaItem item;
   final bool isSelected;
   final _ScrollToVisibleController controller;
 
-  String get path => row.path;
-  bool get hasLatlng => row.hasLatlng;
+  String get path => item.path;
+  bool get hasLatlng => item.hasLatlng;
 
   @override
   State<_Thumbnail> createState() => _ThumbnailState();
 }
 
 class _ThumbnailState extends State<_Thumbnail> with _ScrollToVisibleListener {
-  void _handleRowUpdated(DbRow row) {
-    assert(row == widget.row);
-    setState(() {});
+  void _handleItemUpdated() {
+    setState(() {
+      // [build] references properties of [widget.item].
+    });
   }
 
   @override
   void initState() {
     super.initState();
-    DatabaseBinding.instance.setFileListener(widget.path, _handleRowUpdated);
+    MediaBinding.instance.addItemListener(widget.path, _handleItemUpdated);
   }
 
   @override
   void didUpdateWidget(covariant _Thumbnail oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.path != oldWidget.path) {
-      DatabaseBinding.instance.setFileListener(oldWidget.path, null);
-      DatabaseBinding.instance.setFileListener(widget.path, _handleRowUpdated);
+      MediaBinding.instance.removeItemListener(oldWidget.path, _handleItemUpdated);
+      MediaBinding.instance.addItemListener(widget.path, _handleItemUpdated);
     }
   }
 
   @override
   void dispose() {
-    DatabaseBinding.instance.setFileListener(widget.path, null);
+    MediaBinding.instance.removeItemListener(widget.path, _handleItemUpdated);
     super.dispose();
   }
 
@@ -261,27 +268,27 @@ class _ThumbnailState extends State<_Thumbnail> with _ScrollToVisibleListener {
       fit: StackFit.passthrough,
       children: <Widget>[
         Image.memory(
-          widget.row.thumbnail,
+          widget.item.thumbnail,
           fit: BoxFit.cover,
           key: widget.key,
         ),
         _PropertyIndicator(
           alignment: const Alignment(-1.0, 0.4),
-          icon: widget.row.hasDateTime ? Icons.date_range : Icons.date_range,
-          color: widget.row.hasDateTime ? Colors.green : Colors.red,
+          icon: widget.item.hasDateTime ? Icons.date_range : Icons.date_range,
+          color: widget.item.hasDateTime ? Colors.green : Colors.red,
         ),
         _PropertyIndicator(
           alignment: Alignment.bottomLeft,
           icon: widget.hasLatlng ? Icons.location_on : Icons.location_off,
           color: widget.hasLatlng ? Colors.green : Colors.red,
         ),
-        if (widget.row.isModified)
+        if (widget.item.isModified)
           const _PropertyIndicator(
             alignment: Alignment.topRight,
             icon: Icons.save,
             color: Colors.red,
           ),
-        if (widget.row.type == MediaType.video)
+        if (widget.item.type == MediaType.video)
           const VideoPlaySymbol(),
         if (widget.isSelected)
           DecoratedBox(
@@ -320,7 +327,7 @@ class _PropertyIndicator extends StatelessWidget {
             padding: const EdgeInsets.all(3),
             child: Icon(
               icon,
-              color: Colors.red,
+              color: color,
             ),
           ),
         ),

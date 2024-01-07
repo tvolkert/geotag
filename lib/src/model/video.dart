@@ -1,10 +1,12 @@
+// ignore_for_file: avoid_print
+
 import 'dart:convert';
 import 'dart:io' as io;
 import 'dart:typed_data';
 
 import 'package:file/file.dart';
 
-import 'date_time.dart';
+import '../extensions/date_time.dart';
 import 'gps.dart';
 import 'metadata.dart';
 
@@ -15,7 +17,10 @@ class Mp4 {
 
   Metadata extractMetadata() {
     final Uint8List thumbnailBytes = _getFrameBytes();
-    final io.ProcessResult ffprobe = io.Process.runSync('/opt/homebrew/bin/ffprobe', <String>[path]);
+    final io.ProcessResult ffprobe = io.Process.runSync(
+      '/opt/homebrew/bin/ffprobe',
+      <String>[path],
+    );
     DateTime? dateTime;
     GpsCoordinates? coordinates;
     if (ffprobe.exitCode == 0) {

@@ -124,7 +124,7 @@ class _DateTimeEditorDialogState extends State<DateTimeEditorDialog> {
   Widget build(BuildContext context) {
     return Align(
       alignment: Alignment.topCenter,
-      // TODO: Use a Dialog widget instead once the webview handles input correctly.
+      // TODO: Use a Dialog widget once the webview handles input correctly.
       child: Material(
         // backgroundColor: Colors.white,
         // surfaceTintColor: Colors.transparent,
@@ -141,17 +141,41 @@ class _DateTimeEditorDialogState extends State<DateTimeEditorDialog> {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
-                  _IntEntry(defaultValue: defaultYear, label: 'Year', maxLength: 4, onValueChanged: _handleYearChanged, autofocus: true),
+                  _IntEntry(
+                    defaultValue: defaultYear,
+                    label: 'Year',
+                    maxLength: 4,
+                    onValueChanged: _handleYearChanged,
+                    autofocus: true,
+                  ),
                   const SizedBox(width: 8),
-                  _IntEntry(defaultValue: defaultMonth, label: 'Month', onValueChanged: _handleMonthChanged),
+                  _IntEntry(
+                    defaultValue: defaultMonth,
+                    label: 'Month',
+                    onValueChanged: _handleMonthChanged,
+                  ),
                   const SizedBox(width: 8),
-                  _IntEntry(defaultValue: defaultDay, label: 'Day', onValueChanged: _handleDayChanged),
+                  _IntEntry(
+                    defaultValue: defaultDay,
+                    label: 'Day',
+                    onValueChanged: _handleDayChanged,
+                  ),
                   const SizedBox(width: 12),
-                  _IntEntry(defaultValue: defaultHour, label: 'Time', onValueChanged: _handleHourChanged),
+                  _IntEntry(
+                    defaultValue: defaultHour,
+                    label: 'Time',
+                    onValueChanged: _handleHourChanged,
+                  ),
                   const SizedBox(width: 8, child: Center(child: Text(':'))),
-                  _IntEntry(defaultValue: defaultMinute, onValueChanged: _handleMinuteChanged),
+                  _IntEntry(
+                    defaultValue: defaultMinute,
+                    onValueChanged: _handleMinuteChanged,
+                  ),
                   const SizedBox(width: 8),
-                  _AmPmEntry(defaultValue: defaultAmPm, onValueChanged: _handleAmPmChanged),
+                  _AmPmEntry(
+                    defaultValue: defaultAmPm,
+                    onValueChanged: _handleAmPmChanged,
+                  ),
                 ],
               ),
               const SizedBox(height: 10),

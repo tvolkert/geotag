@@ -18,7 +18,7 @@ class ConfirmDeleteFilesDialog extends StatelessWidget {
         color: Color.fromARGB(255, 151, 200, 223),
         borderRadius: BorderRadius.vertical(
           top: Radius.circular(25),
-        )
+        ),
       ),
       child: SizedBox(
         height: 200,
