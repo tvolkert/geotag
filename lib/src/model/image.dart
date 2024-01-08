@@ -10,11 +10,12 @@ import 'exif.dart';
 import 'gps.dart';
 
 class JpegFile {
-  JpegFile(this.path)
-      : assert(path.toLowerCase().endsWith('jpg') || path.toLowerCase().endsWith('.jpeg'));
+  JpegFile(this.path) : assert(allowedExtensions.contains(path.toLowerCase().split('.').last));
 
   final String path;
   Image? _image;
+
+  static Set<String> allowedExtensions = <String>{'jpg', 'jpeg'};
 
   @protected
   Image get image => _image ??= _decode();

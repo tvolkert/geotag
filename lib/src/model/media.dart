@@ -376,6 +376,7 @@ class MediaItems {
         fs.path.join(message.appSupportPath, 'media'),
       );
       for (String path in message.paths) {
+        final String extension = path.toLowerCase().split('.').last;
         final Uint8List bytes = fs.file(path).readAsBytesSync();
         chrootFs.file(path).parent.createSync(recursive: true);
         chrootFs.file(path).writeAsBytesSync(bytes);
@@ -386,7 +387,7 @@ class MediaItems {
           chrootFs.file(path).readAsBytesSync(),
         ));
 
-        if (path.toLowerCase().endsWith('jpg') || path.toLowerCase().endsWith('.jpeg')) {
+        if (JpegFile.allowedExtensions.contains(extension)) {
           final JpegFile jpeg = JpegFile(path);
           final GpsCoordinates? coords = jpeg.getGpsCoordinates();
           final DateTime? dateTimeOriginal = jpeg.getDateTimeOriginal();
@@ -403,7 +404,7 @@ class MediaItems {
             ..isModified = false;
           await db.insert('MEDIA', item._row);
           yield item._row;
-        } else if (path.toLowerCase().endsWith('.mp4') || path.toLowerCase().endsWith('.mov')) {
+        } else if (Mp4.allowedExtensions.contains(extension)) {
           final Mp4 mp4 = Mp4(path);
           final Metadata metadata = mp4.extractMetadata();
           final String extractedFramePath = '$path.jpg';
@@ -420,11 +421,13 @@ class MediaItems {
             ..isModified = false;
           await db.insert('MEDIA', item._row);
           yield item._row;
+        } else {
+          yield* _yieldError(UnsupportedError('Unsupported file: $path'));
         }
       }
-    } catch (ex, stack) {
-      print(ex);
-      print(stack);
+    } catch (error, stack) {
+      print('$error\n$stack');
+      yield* _yieldError(error);
     }
   }
 
@@ -461,9 +464,9 @@ class MediaItems {
         await item._writeToDb(db);
         yield i;
       }
-    } catch (ex, stack) {
-      print(ex);
-      print(stack);
+    } catch (error, stack) {
+      print('$error\n$stack');
+      yield* _yieldError(error);
     }
   }
 
@@ -483,9 +486,9 @@ class MediaItems {
         await db.delete('MEDIA', where: 'PATH = ?', whereArgs: [item.path]);
         yield i;
       }
-    } catch (ex, stack) {
-      print(ex);
-      print(stack);
+    } catch (error, stack) {
+      print('$error\n$stack');
+      yield* _yieldError(error);
     }
   }
 
@@ -505,10 +508,14 @@ class MediaItems {
         fs.file(path).copySync(target.path);
         yield item._row;
       }
-    } catch (ex, stack) {
-      print(ex);
-      print(stack);
+    } catch (error, stack) {
+      print('$error\n$stack');
+      yield* _yieldError(error);
     }
+  }
+
+  Stream<T> _yieldError<T>(dynamic error) async* {
+    throw error;
   }
 }
 

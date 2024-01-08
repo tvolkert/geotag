@@ -26,6 +26,12 @@ class _ThumbnailListState extends State<ThumbnailList> {
 
   MediaItems get items => MediaBinding.instance.items;
 
+  void _handleItemCollectionChanged() {
+    setState(() {
+      // [build] references [items].
+    });
+  }
+
   void _handleSelectionChanged() {
     GeotagHome.of(context).setSelectedItems(_selectionController.selectedItems);
   }
@@ -126,10 +132,12 @@ class _ThumbnailListState extends State<ThumbnailList> {
     _selectionController = ListViewSelectionController(selectMode: SelectMode.multi);
     _selectionController.addListener(_handleSelectionChanged);
     _focusNode = FocusNode();
+    MediaBinding.instance.addCollectionListener(_handleItemCollectionChanged);
   }
 
   @override
   void dispose() {
+    MediaBinding.instance.removeCollectionListener(_handleItemCollectionChanged);
     _focusNode.dispose();
     _selectionController.removeListener(_handleSelectionChanged);
     _selectionController.dispose();

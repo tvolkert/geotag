@@ -11,9 +11,11 @@ import 'gps.dart';
 import 'metadata.dart';
 
 class Mp4 {
-  Mp4(this.path) : assert(path.toLowerCase().endsWith('mp4') || path.toLowerCase().endsWith('mov'));
+  Mp4(this.path) : assert(allowedExtensions.contains(path.toLowerCase().split('.').last));
 
   final String path;
+
+  static Set<String> allowedExtensions = <String>{'m4v', 'mp4', 'mov'};
 
   Metadata extractMetadata() {
     final Uint8List thumbnailBytes = _getFrameBytes();

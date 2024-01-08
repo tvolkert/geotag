@@ -12,15 +12,25 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import 'src/model/app.dart';
 import 'src/model/gps.dart';
+import 'src/model/image.dart';
 import 'src/model/media.dart';
 import 'src/model/tasks.dart';
+import 'src/model/video.dart';
 import 'src/ui/date_time_editor.dart';
 import 'src/ui/thumbnail_list.dart';
 import 'src/ui/video_player.dart';
 
-void main() async {
-  await GeotagAppBinding.ensureInitialized();
-  runApp(const MyApp());
+void main() {
+  runZonedGuarded<void>(
+    () async {
+      await GeotagAppBinding.ensureInitialized();
+      runApp(const MyApp());
+    },
+    (Object error, StackTrace stack) {
+      debugPrint('Caught unhandled error by zone error handler.');
+      debugPrint('$error\n$stack');
+    },
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -71,8 +81,11 @@ class _GeotagHomeState extends State<GeotagHome> implements HomeController {
 
   void _launchFilePicker() async {
     FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.media,
-      allowedExtensions: ['jpg', 'jpeg', /*'png', 'gif', 'webp', */'mp4', 'mov'],
+      type: FileType.custom,
+      allowedExtensions: <String>[
+        ...JpegFile.allowedExtensions,
+        ...Mp4.allowedExtensions,
+      ],
       allowMultiple: true,
       lockParentWindow: true,
     );
