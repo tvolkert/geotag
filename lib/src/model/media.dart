@@ -255,6 +255,21 @@ class MediaItem {
   }
 }
 
+class _FilteredItems {
+  const _FilteredItems(this.items, this.lookup);
+
+  /// The filtered items, guaranteed to be a subset of [MediaItems._items]
+  final List<MediaItem> items;
+
+  /// Maps [MediaItem.path] to the index of the item in [MediaItems._items].
+  final Map<String, int> lookup;
+
+  int getOriginalIndex(int filteredIndex) {
+    final String path = items[filteredIndex].path;
+    return lookup[path]!;
+  }
+}
+
 class MediaItems {
   MediaItems._from(this._items);
 
@@ -323,17 +338,10 @@ class MediaItems {
 
   Stream<MediaItem> deleteFiles(Iterable<int> indexes) async* {
     // TODO: provide hook whereby caller can cancel operation.
-    assert(indexes.length <= _items.length);
-    assert(indexes.every((int index) => index < _items.length));
-    Map<String, int> lookup = <String, int>{};
-    List<MediaItem> filtered = List<MediaItem>.empty(growable: true);
-    for (int i in indexes) {
-      filtered.add(_items[i]);
-      lookup[_items[i].path] = i;
-    }
+    final _FilteredItems filtered = _filterItems(indexes);
     final _DeleteFilesMessage message = _DeleteFilesMessage._(
       DatabaseBinding.instance.dbFile.absolute.path,
-      filtered,
+      filtered.items,
     );
     final Stream<int> iter = Isolates.stream<_DeleteFilesMessage, int>(
       _deleteFilesWorker,
@@ -341,19 +349,19 @@ class MediaItems {
       debugLabel: 'deleteFiles',
     );
     await for (final int filteredIndex in iter) {
-      final int? index = lookup[filtered[filteredIndex].path];
-      assert(index != null);
-      final MediaItem removed = _items.removeAt(index!);
-      assert(removed.path == filtered[filteredIndex].path);
+      final int index = filtered.getOriginalIndex(filteredIndex);
+      final MediaItem removed = _items.removeAt(index);
+      assert(removed.path == filtered.items[filteredIndex].path);
       yield removed;
       MediaBinding.instance._notifyCollectionChanged();
     }
   }
 
-  Stream<void> exportToFolder(String folder) async* {
+  Stream<void> exportToFolder(String folder, Iterable<int> indexes) async* {
+    final _FilteredItems filtered = _filterItems(indexes);
     final _ExportToFolderMessage message = _ExportToFolderMessage._(
       folder,
-      List<MediaItem>.from(_items),
+      filtered.items,
     );
     final Stream<DbRow> iter = Isolates.stream<_ExportToFolderMessage, DbRow>(
       _exportToFolderWorker,
@@ -363,6 +371,18 @@ class MediaItems {
     await for (final DbRow _ in iter) {
       yield null;
     }
+  }
+
+  _FilteredItems _filterItems(Iterable<int> indexes) {
+    assert(indexes.length <= _items.length);
+    assert(indexes.every((int index) => index < _items.length));
+    Map<String, int> lookup = <String, int>{};
+    List<MediaItem> filtered = List<MediaItem>.empty(growable: true);
+    for (int i in indexes) {
+      filtered.add(_items[i]);
+      lookup[_items[i].path] = i;
+    }
+    return _FilteredItems(filtered, lookup);
   }
 
   /// This runs in a separate isolate.
@@ -505,7 +525,7 @@ class MediaItems {
           target = parent.childFile('$basename ($i)');
         }
         // https://github.com/flutter/flutter/issues/140763
-        fs.file(path).copySync(target.path);
+        await fs.file(path).copy(target.path);
         yield item._row;
       }
     } catch (error, stack) {

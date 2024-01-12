@@ -134,8 +134,8 @@ class _GeotagHomeState extends State<GeotagHome> implements HomeController {
       lockParentWindow: true,
     );
     if (path != null) {
-      TaskBinding.instance.addTasks(items.length);
-      await for (void _ in items.exportToFolder(path)) {
+      TaskBinding.instance.addTasks(_selectedItems.length);
+      await for (void _ in items.exportToFolder(path, _selectedItems.toList())) {
         TaskBinding.instance.onTaskCompleted();
       }
     }

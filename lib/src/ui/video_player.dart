@@ -98,6 +98,7 @@ class _VideoPlayerState extends State<VideoPlayer> {
   @override
   void didUpdateWidget(covariant VideoPlayer oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // TODO: we need to reinitialize the controller after edits are saved
     if (widget.item.path != oldWidget.item.path) {
       // TODO: Can we just update it instead of disposing and re-creating?
       _controller.pause();
@@ -300,7 +301,7 @@ class _VideoProgressMonitorState extends State<_VideoProgressMonitor> {
                 SizedBox(
                   height: 21,
                   child: GestureDetector(
-                    onTap: _consumeTap,
+                    onTap: isVisible ? _consumeTap : null,
                     child: MouseRegion(
                       cursor: isVisible ? SystemMouseCursors.click : SystemMouseCursors.basic,
                       child: Listener(
