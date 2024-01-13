@@ -21,6 +21,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
   late final ListViewSelectionController _selectionController;
   late final FocusNode _focusNode;
   final _ScrollToVisibleController _scrollToVisibleController = _ScrollToVisibleController();
+  int? _selectedItemId;
 
   static const double itemExtent = 175;
 
@@ -28,11 +29,22 @@ class _ThumbnailListState extends State<ThumbnailList> {
 
   void _handleItemCollectionChanged() {
     setState(() {
-      // [build] references [items].
+      // In addition to updating the selection, [build] references [items].
+      // Hence, the unconditional [setState] call.
+      if (_selectedItemId != null) {
+        final int oldSelectedIndex = selectedIndex!;
+        final int newSelectedIndex = items.indexOfId(_selectedItemId!);
+        _selectionController.selectedIndex = newSelectedIndex;
+        SchedulerBinding.instance.addPostFrameCallback((Duration timeStamp) {
+          final double leftScrollOffset = newSelectedIndex * itemExtent;
+          _scrollController.jumpTo(newSelectedIndex > oldSelectedIndex ? leftScrollOffset - context.size!.width + itemExtent : leftScrollOffset);
+        });
+      }
     });
   }
 
   void _handleSelectionChanged() {
+    _selectedItemId = selectedIndex == null ? null : items[selectedIndex!].id;
     GeotagHome.of(context).setSelectedItems(_selectionController.selectedItems);
   }
 
@@ -71,6 +83,22 @@ class _ThumbnailListState extends State<ThumbnailList> {
           });
         }
         result = KeyEventResult.handled;
+      } else if (event.logicalKey == LogicalKeyboardKey.keyD) {
+        switch (items.comparator) {
+          case ById():
+            items.comparator = const ByDate(Ascending());
+          case ByDate(direction: SortDirection direction):
+            items.comparator = ByDate(direction.reversed);
+        }
+        result = KeyEventResult.handled;
+      } else if (event.logicalKey == LogicalKeyboardKey.keyI) {
+        switch (items.comparator) {
+          case ById(direction: SortDirection direction):
+            items.comparator = ById(direction.reversed);
+          case ByDate():
+            items.comparator = const ById(Ascending());
+        }
+        result = KeyEventResult.handled;
       }
     }
     return result;
@@ -101,8 +129,6 @@ class _ThumbnailListState extends State<ThumbnailList> {
   }
 
   int? get selectedIndex => _selectionController.selectedItems.singleOrNull;
-
-  MediaItem? get selectedItem => selectedIndex == null ? null : items[selectedIndex!];
 
   Future<void> _deleteItems(Iterable<int> indexes) async {
     assert(indexes.length <= items.length);

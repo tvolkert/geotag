@@ -285,6 +285,21 @@ sealed class SortDirection {
   const SortDirection();
 
   int apply(int comparedValue);
+
+  SortDirection get reversed {
+    switch (this) {
+      case Ascending():
+        return const Descending();
+      case Descending():
+        return const Ascending();
+    }
+  }
+
+  @override
+  bool operator ==(Object other) => runtimeType == other.runtimeType;
+
+  @override
+  int get hashCode => runtimeType.hashCode;
 }
 
 final class Ascending extends SortDirection {
@@ -311,6 +326,15 @@ sealed class MediaItemComparator {
 
   @protected
   int doCompare(MediaItem a, MediaItem b);
+
+  @override
+  bool operator ==(Object other) {
+    return runtimeType == other.runtimeType
+        && direction == (other as MediaItemComparator).direction;
+  }
+
+  @override
+  int get hashCode => Object.hash(runtimeType.hashCode, direction.hashCode);
 }
 
 final class ById extends MediaItemComparator {
@@ -356,6 +380,7 @@ class MediaItems {
     if (value != _comparator) {
       _comparator = value;
       _items.sort(value.compare);
+      MediaBinding.instance._notifyCollectionChanged();
     }
   }
 
@@ -370,6 +395,8 @@ class MediaItems {
   MediaItems get whereModified {
     return MediaItems._from(_items.where((MediaItem item) => item.isModified).toList(), comparator);
   }
+
+  int indexOfId(int id) => _items.indexWhere((MediaItem item) => item.id == id);
 
   MediaItem operator [](int index) => _items[index];
 
@@ -392,7 +419,7 @@ class MediaItems {
       _items.insert(-index - 1, item);
       assert(() {
         final List<MediaItem> copy = List<MediaItem>.from(_items)..sort(_comparator.compare);
-        return const ListEquality().equals(_items, copy);
+        return const ListEquality<MediaItem>().equals(_items, copy);
       }());
       yield item;
       MediaBinding.instance._notifyCollectionChanged();
