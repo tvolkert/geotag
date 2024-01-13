@@ -39,29 +39,34 @@ enum MediaType {
 /// change by calling [MediaBinding.addItemListener].
 class MediaItem {
   /// Creates a new [MediaItem] with no metadata.
-  MediaItem._empty() : _row = DbRow();
+  MediaItem._empty() : _row = DbRow(), _unsavedRow = DbRow();
 
   /// Creates a new [MediaItem] from the specified database row.
-  MediaItem.fromDbRow(DbRow row) : _row = row;
+  ///
+  /// The [row] will be used directly as the backing data structure for this
+  /// newly created item, so changes to the row will be reflected in this
+  /// item.
+  MediaItem.fromDbRow(DbRow row) : _row = row, _unsavedRow = DbRow.from(row);
 
   final DbRow _row;
+  final DbRow _unsavedRow;
 
   /// The unique id of this media item.
   ///
   /// IDs are assigned by the database and are ever increasing, so a greater
   /// ID means that the item was inserted into the database later.
   ///
-  /// Listeners will not be notified when this value is changed until [commit]
-  /// is called.
+  /// Changes to this value will not be visible (and listeners will not be
+  /// notified) until [commit] is called.
   int get id => _row['ITEM_ID'] as int;
-  set id(int value) => _row['ITEM_ID'] = value;
+  set id(int value) => _unsavedRow['ITEM_ID'] = value;
 
   /// The type of this media item.
   ///
-  /// Listeners will not be notified when this value is changed until [commit]
-  /// is called.
+  /// Changes to this value will not be visible (and listeners will not be
+  /// notified) until [commit] is called.
   MediaType get type => MediaType.values[_row['TYPE'] as int];
-  set type(MediaType value) => _row['TYPE'] = value.index;
+  set type(MediaType value) => _unsavedRow['TYPE'] = value.index;
 
   /// The file system path to this media item.
   ///
@@ -70,10 +75,10 @@ class MediaItem {
   /// This value will be unique across all media items, and as such, it is used
   /// as the key to methods like [MediaBinding.addItemListener].
   ///
-  /// Listeners will not be notified when this value is changed until [commit]
-  /// is called.
+  /// Changes to this value will not be visible (and listeners will not be
+  /// notified) until [commit] is called.
   String get path => _row['PATH'] as String;
-  set path(String value) => _row['PATH'] = value;
+  set path(String value) => _unsavedRow['PATH'] = value;
 
   /// The file system path to the photo representation of this media item.
   ///
@@ -82,20 +87,20 @@ class MediaItem {
   ///
   /// This path can be resolved to a file by using [FilesBinding.fs]
   ///
-  /// Listeners will not be notified when this value is changed until [commit]
-  /// is called.
+  /// Changes to this value will not be visible (and listeners will not be
+  /// notified) until [commit] is called.
   String get photoPath => _row['PHOTO_PATH'] as String;
-  set photoPath(String value) => _row['PHOTO_PATH'] = value;
+  set photoPath(String value) => _unsavedRow['PHOTO_PATH'] = value;
 
   /// JPEG-encoded bytes of a small thumbnail representation of this media
   /// item.
   ///
   /// These bytes are suitable to be used in the [Image.memory] widget.
   ///
-  /// Listeners will not be notified when this value is changed until [commit]
-  /// is called.
+  /// Changes to this value will not be visible (and listeners will not be
+  /// notified) until [commit] is called.
   Uint8List get thumbnail => _row['THUMBNAIL'] as Uint8List;
-  set thumbnail(Uint8List value) => _row['THUMBNAIL'] = value;
+  set thumbnail(Uint8List value) => _unsavedRow['THUMBNAIL'] = value;
 
   /// Whether this media item has geo-location information attached to it.
   bool get hasLatlng => _row['LATLNG'] != null;
@@ -106,12 +111,12 @@ class MediaItem {
   /// and longitude. This string value is suitable for use with the
   /// [GpsCoordinates.fromString] constructor.
   ///
-  /// Listeners will not be notified when this value is changed until [commit]
-  /// is called.
+  /// Changes to this value will not be visible (and listeners will not be
+  /// notified) until [commit] is called.
   String? get latlng => _row['LATLNG'] as String?;
   set latlng(String? value) {
     assert(value == null || RegExp(r'^-?[0-9]+\.?[0-9]*, *-?[0-9]+\.?[0-9]*$').hasMatch(value));
-    _row['LATLNG'] = value;
+    _unsavedRow['LATLNG'] = value;
   }
 
   /// Whether this media item has an "original date/time" value attached to it.
@@ -134,8 +139,8 @@ class MediaItem {
   /// example is a photo taken with a film camera, which was taken at one point
   /// in time but later digitized into an encoded file.
   ///
-  /// Listeners will not be notified when this value is changed until [commit]
-  /// is called.
+  /// Changes to this value will not be visible (and listeners will not be
+  /// notified) until [commit] is called.
   ///
   /// See also:
   ///
@@ -148,7 +153,7 @@ class MediaItem {
   }
 
   set dateTimeOriginal(DateTime? value) {
-    _row['DATETIME_ORIGINAL'] = value?.millisecondsSinceEpoch;
+    _unsavedRow['DATETIME_ORIGINAL'] = value?.millisecondsSinceEpoch;
   }
 
   /// Whether this media item has an "date/time digitized" value attached to
@@ -172,8 +177,8 @@ class MediaItem {
   /// example is a photo taken with a film camera, which was taken at one point
   /// in time but later digitized into an encoded file.
   ///
-  /// Listeners will not be notified when this value is changed until [commit]
-  /// is called.
+  /// Changes to this value will not be visible (and listeners will not be
+  /// notified) until [commit] is called.
   ///
   /// See also:
   ///
@@ -186,7 +191,7 @@ class MediaItem {
   }
 
   set dateTimeDigitized(DateTime? value) {
-    _row['DATETIME_DIGITIZED'] = value?.millisecondsSinceEpoch;
+    _unsavedRow['DATETIME_DIGITIZED'] = value?.millisecondsSinceEpoch;
   }
 
   /// whether this media item has any date/time attached to it.
@@ -209,46 +214,52 @@ class MediaItem {
   /// Whether edits have been made to this media item's metadata but not yet
   /// written to the media item's file.
   ///
-  /// Listeners will not be notified when this value is changed until [commit]
-  /// is called.
+  /// Changes to this value will not be visible (and listeners will not be
+  /// notified) until [commit] is called.
   bool get isModified => _row['MODIFIED'] == 1;
-  set isModified(bool value) => _row['MODIFIED'] = value ? 1 : 0;
+  set isModified(bool value) => _unsavedRow['MODIFIED'] = value ? 1 : 0;
 
   /// The date/time that edits were last made to this media item's metadata.
   ///
-  /// Listeners will not be notified when this value is changed until [commit]
-  /// is called.
+  /// Changes to this value will not be visible (and listeners will not be
+  /// notified) until [commit] is called.
   DateTime get lastModified {
     return DateTime.fromMillisecondsSinceEpoch(_row['DATETIME_LAST_MODIFIED'] as int);
   }
 
   set lastModified(DateTime value) {
-    _row['DATETIME_LAST_MODIFIED'] = value.millisecondsSinceEpoch;
+    _unsavedRow['DATETIME_LAST_MODIFIED'] = value.millisecondsSinceEpoch;
   }
 
   /// Writes this media item's metadata fields to the database and notifies
   /// listeners that the metadata has changed.
   Future<void> commit() async {
+    final MediaItems items = MediaBinding.instance.items;
+    final int oldIndex = items.indexOf(this);
     await _writeToDb(DatabaseBinding.instance.db);
-    _notify();
+    _persistAndNotify();
+    if (oldIndex >= 0) {
+      items._removeAndReinsertFrom(oldIndex);
+    }
   }
 
   Future<void> _writeToDb(sqflite.Database db) {
     return db.update(
       'MEDIA',
       <String, Object?>{
-        'LATLNG': _row['LATLNG'],
-        'DATETIME_ORIGINAL': _row['DATETIME_ORIGINAL'],
-        'DATETIME_DIGITIZED': _row['DATETIME_DIGITIZED'],
-        'MODIFIED': _row['MODIFIED'],
-        'DATETIME_LAST_MODIFIED': _row['DATETIME_LAST_MODIFIED'],
+        'LATLNG': _unsavedRow['LATLNG'],
+        'DATETIME_ORIGINAL': _unsavedRow['DATETIME_ORIGINAL'],
+        'DATETIME_DIGITIZED': _unsavedRow['DATETIME_DIGITIZED'],
+        'MODIFIED': _unsavedRow['MODIFIED'],
+        'DATETIME_LAST_MODIFIED': _unsavedRow['DATETIME_LAST_MODIFIED'],
       },
       where: 'PATH = ?',
       whereArgs: <String>[path],
     );
   }
 
-  void _notify() {
+  void _persistAndNotify() {
+    _row.addAll(_unsavedRow);
     MediaBinding.instance._notifyPhotoChanged(path);
   }
 
@@ -384,6 +395,18 @@ class MediaItems {
     }
   }
 
+  void _removeAndReinsertFrom(int index) {
+    assert(index >= 0);
+    final MediaItem item = _items.removeAt(index);
+    int newIndex = chicago.binarySearch<MediaItem>(_items, item, compare: comparator.compare);
+    assert(newIndex < 0);
+    newIndex = -newIndex - 1;
+    _items.insert(newIndex, item);
+    if (index != newIndex) {
+      MediaBinding.instance._notifyCollectionChanged();
+    }
+  }
+
   bool get isEmpty => _items.isEmpty;
 
   bool get isNotEmpty => _items.isNotEmpty;
@@ -396,7 +419,10 @@ class MediaItems {
     return MediaItems._from(_items.where((MediaItem item) => item.isModified).toList(), comparator);
   }
 
-  int indexOfId(int id) => _items.indexWhere((MediaItem item) => item.id == id);
+  int indexOf(MediaItem item) {
+    final int index = chicago.binarySearch(_items, item, compare: comparator.compare);
+    return index < 0 ? -1 : index;
+  }
 
   MediaItem operator [](int index) => _items[index];
 
@@ -443,7 +469,7 @@ class MediaItems {
       // local row object in this isolate needs to be updated to match.
       _items[i]
         ..isModified = false
-        .._notify();
+        .._persistAndNotify();
       yield _items[i];
     }
   }
@@ -534,8 +560,8 @@ class MediaItems {
             ..dateTimeDigitized = dateTimeDigitized
             ..lastModified = DateTime.now()
             ..isModified = false;
-          item.id = await db.insert('MEDIA', item._row);
-          yield item._row;
+          item.id = await db.insert('MEDIA', item._unsavedRow);
+          yield item._unsavedRow;
         } else if (Mp4.allowedExtensions.contains(extension)) {
           final Mp4 mp4 = Mp4(path);
           final Metadata metadata = mp4.extractMetadata();
@@ -551,8 +577,8 @@ class MediaItems {
             ..dateTimeDigitized = metadata.dateTime
             ..lastModified = DateTime.now()
             ..isModified = false;
-          item.id = await db.insert('MEDIA', item._row);
-          yield item._row;
+          item.id = await db.insert('MEDIA', item._unsavedRow);
+          yield item._unsavedRow;
         } else {
           yield* _yieldError(UnsupportedError('Unsupported file: $path'));
         }

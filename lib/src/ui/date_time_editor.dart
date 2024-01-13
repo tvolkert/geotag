@@ -233,6 +233,7 @@ class _IntValidatingTextEditingController extends _ValidatingTextEditingControll
   }
 }
 
+// TODO: handle configuration for minutes ("07" instead of "7")
 class _IntEntry extends StatefulWidget {
   const _IntEntry({
     required this.defaultValue,

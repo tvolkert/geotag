@@ -27,7 +27,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
   late final ListViewSelectionController _selectionController;
   late final FocusNode _focusNode;
   final _ScrollToVisibleController _scrollToVisibleController = _ScrollToVisibleController();
-  int? _selectedItemId;
+  MediaItem? _selectedItem;
 
   static const double itemExtent = 175;
 
@@ -37,9 +37,9 @@ class _ThumbnailListState extends State<ThumbnailList> {
     setState(() {
       // In addition to updating the selection, [build] references [items].
       // Hence, the unconditional [setState] call.
-      if (_selectedItemId != null) {
+      if (_selectedItem != null) {
         final int oldSelectedIndex = selectedIndex!;
-        final int newSelectedIndex = items.indexOfId(_selectedItemId!);
+        final int newSelectedIndex = items.indexOf(_selectedItem!);
         _selectionController.selectedIndex = newSelectedIndex;
         SchedulerBinding.instance.addPostFrameCallback((Duration timeStamp) {
           final double leftScrollOffset = newSelectedIndex * itemExtent;
@@ -52,7 +52,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
   }
 
   void _handleSelectionChanged() {
-    _selectedItemId = selectedIndex == null ? null : items[selectedIndex!].id;
+    _selectedItem = selectedIndex == null ? null : items[selectedIndex!];
     GeotagHome.of(context).setSelectedItems(_selectionController.selectedItems);
   }
 
