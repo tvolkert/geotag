@@ -1,5 +1,6 @@
 // ignore_for_file: avoid_print
 
+import 'package:chicago/chicago.dart' as chicago show binarySearch;
 import 'package:collection/collection.dart';
 import 'package:file/chroot.dart';
 import 'package:file/file.dart';
@@ -44,6 +45,16 @@ class MediaItem {
   MediaItem.fromDbRow(DbRow row) : _row = row;
 
   final DbRow _row;
+
+  /// The unique id of this media item.
+  ///
+  /// IDs are assigned by the database and are ever increasing, so a greater
+  /// ID means that the item was inserted into the database later.
+  ///
+  /// Listeners will not be notified when this value is changed until [commit]
+  /// is called.
+  int get id => _row['ITEM_ID'] as int;
+  set id(int value) => _row['ITEM_ID'] = value;
 
   /// The type of this media item.
   ///
@@ -270,15 +281,83 @@ class _FilteredItems {
   }
 }
 
+sealed class SortDirection {
+  const SortDirection();
+
+  int apply(int comparedValue);
+}
+
+final class Ascending extends SortDirection {
+  const Ascending();
+
+  @override
+  int apply(int comparedValue) => comparedValue;
+}
+
+final class Descending extends SortDirection {
+  const Descending();
+
+  @override
+  int apply(int comparedValue) => comparedValue * -1;
+}
+
+sealed class MediaItemComparator {
+  const MediaItemComparator(this.direction);
+
+  final SortDirection direction;
+
+  @nonVirtual
+  int compare(MediaItem a, MediaItem b) => direction.apply(doCompare(a, b));
+
+  @protected
+  int doCompare(MediaItem a, MediaItem b);
+}
+
+final class ById extends MediaItemComparator {
+  const ById(super.direction);
+
+  @override
+  @protected
+  int doCompare(MediaItem a, MediaItem b) => a.id.compareTo(b.id);
+}
+
+final class ByDate extends MediaItemComparator {
+  const ByDate(super.direction);
+
+  @override
+  @protected
+  int doCompare(MediaItem a, MediaItem b) {
+    if (a.dateTime == null && b.dateTime == null) {
+      return 0;
+    } else if (a.dateTime == null) {
+      return -1;
+    } else if (b.dateTime == null) {
+      return 1;
+    } else {
+      return a.dateTime!.compareTo(b.dateTime!);
+    }
+  }
+}
+
 class MediaItems {
-  MediaItems._from(this._items);
+  MediaItems._from(this._items, this._comparator);
 
   MediaItems.fromDbResults(DbResults results)
-      : _items = List<MediaItem>.generate(results.length, (int index) {
+      : _comparator = const ById(Ascending()),
+        _items = List<MediaItem>.generate(results.length, (int index) {
           return MediaItem.fromDbRow(results[index]);
         });
 
+  MediaItemComparator _comparator;
   final List<MediaItem> _items;
+
+  MediaItemComparator get comparator => _comparator;
+  set comparator(MediaItemComparator value) {
+    if (value != _comparator) {
+      _comparator = value;
+      _items.sort(value.compare);
+    }
+  }
 
   bool get isEmpty => _items.isEmpty;
 
@@ -289,7 +368,7 @@ class MediaItems {
   bool get containsModified => _items.where((MediaItem item) => item.isModified).isNotEmpty;
 
   MediaItems get whereModified {
-    return MediaItems._from(_items.where((MediaItem item) => item.isModified).toList());
+    return MediaItems._from(_items.where((MediaItem item) => item.isModified).toList(), comparator);
   }
 
   MediaItem operator [](int index) => _items[index];
@@ -308,7 +387,13 @@ class MediaItems {
     );
     await for (final DbRow row in rows) {
       final MediaItem item = MediaItem.fromDbRow(row);
-      _items.add(item);
+      final int index = chicago.binarySearch<MediaItem>(_items, item, compare: comparator.compare);
+      assert(index < 0);
+      _items.insert(-index - 1, item);
+      assert(() {
+        final List<MediaItem> copy = List<MediaItem>.from(_items)..sort(_comparator.compare);
+        return const ListEquality().equals(_items, copy);
+      }());
       yield item;
       MediaBinding.instance._notifyCollectionChanged();
     }
@@ -422,7 +507,7 @@ class MediaItems {
             ..dateTimeDigitized = dateTimeDigitized
             ..lastModified = DateTime.now()
             ..isModified = false;
-          await db.insert('MEDIA', item._row);
+          item.id = await db.insert('MEDIA', item._row);
           yield item._row;
         } else if (Mp4.allowedExtensions.contains(extension)) {
           final Mp4 mp4 = Mp4(path);
@@ -439,7 +524,7 @@ class MediaItems {
             ..dateTimeDigitized = metadata.dateTime
             ..lastModified = DateTime.now()
             ..isModified = false;
-          await db.insert('MEDIA', item._row);
+          item.id = await db.insert('MEDIA', item._row);
           yield item._row;
         } else {
           yield* _yieldError(UnsupportedError('Unsupported file: $path'));
