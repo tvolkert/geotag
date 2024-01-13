@@ -329,8 +329,8 @@ sealed class MediaItemComparator {
 
   @override
   bool operator ==(Object other) {
-    return runtimeType == other.runtimeType
-        && direction == (other as MediaItemComparator).direction;
+    return runtimeType == other.runtimeType &&
+        direction == (other as MediaItemComparator).direction;
   }
 
   @override

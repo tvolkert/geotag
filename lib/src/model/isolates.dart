@@ -43,8 +43,7 @@ class Isolates {
         onExit: resultPort.sendPort,
         errorsAreFatal: false,
         debugName: debugName,
-      )
-      .catchError((dynamic error, StackTrace stack) {
+      ).catchError((dynamic error, StackTrace stack) {
         // Sending the computation failed asynchronously.
         // Do not expect a response, report the error asynchronously.
         resultPort.close();

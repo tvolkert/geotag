@@ -1,4 +1,10 @@
-import 'package:chicago/chicago.dart' show isPlatformCommandKeyPressed, isShiftKeyPressed, ListViewSelectionController, SelectMode, Span;
+import 'package:chicago/chicago.dart'
+    show
+        isPlatformCommandKeyPressed,
+        isShiftKeyPressed,
+        ListViewSelectionController,
+        SelectMode,
+        Span;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
@@ -37,7 +43,9 @@ class _ThumbnailListState extends State<ThumbnailList> {
         _selectionController.selectedIndex = newSelectedIndex;
         SchedulerBinding.instance.addPostFrameCallback((Duration timeStamp) {
           final double leftScrollOffset = newSelectedIndex * itemExtent;
-          _scrollController.jumpTo(newSelectedIndex > oldSelectedIndex ? leftScrollOffset - context.size!.width + itemExtent : leftScrollOffset);
+          _scrollController.jumpTo(newSelectedIndex > oldSelectedIndex
+              ? leftScrollOffset - context.size!.width + itemExtent
+              : leftScrollOffset);
         });
       }
     });

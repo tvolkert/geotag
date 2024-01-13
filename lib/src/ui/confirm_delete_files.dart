@@ -71,4 +71,3 @@ class ConfirmDeleteFilesDialog extends StatelessWidget {
     );
   }
 }
-
