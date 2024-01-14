@@ -10,6 +10,8 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import 'src/extensions/date_time.dart';
+import 'src/extensions/iterable.dart';
 import 'src/model/app.dart';
 import 'src/model/gps.dart';
 import 'src/model/image.dart';
@@ -17,6 +19,7 @@ import 'src/model/media.dart';
 import 'src/model/tasks.dart';
 import 'src/model/video.dart';
 import 'src/ui/date_time_editor.dart';
+import 'src/ui/photo_pile.dart';
 import 'src/ui/thumbnail_list.dart';
 import 'src/ui/video_player.dart';
 
@@ -68,14 +71,14 @@ class _GeotagHomeState extends State<GeotagHome> implements HomeController {
   late final FocusNode _focusNode;
   final VideoPlayerPlayPauseController playPauseController = VideoPlayerPlayPauseController();
   double? _taskProgress;
-  Iterable<int> _selectedItems = const Iterable<int>.empty();
+  Iterable<int> _selectedIndexes = const Iterable<int>.empty();
 
   MediaItems get items => MediaBinding.instance.items;
 
   @override
   void setSelectedItems(Iterable<int> indexes) {
     setState(() {
-      _selectedItems = indexes;
+      _selectedIndexes = indexes;
     });
   }
 
@@ -106,10 +109,10 @@ class _GeotagHomeState extends State<GeotagHome> implements HomeController {
   KeyEventResult _handleKeyEvent(FocusNode focusNode, KeyEvent event) {
     KeyEventResult result = KeyEventResult.ignored;
     // TODO: handle rewind & fast-forward (https://github.com/flutter/flutter/issues/140764)
-    if (_selectedItems.length == 1 &&
+    if (_selectedIndexes.length == 1 &&
         event is! KeyUpEvent &&
         event.logicalKey == LogicalKeyboardKey.space) {
-      final MediaItem item = items[_selectedItems.first];
+      final MediaItem item = items[_selectedIndexes.first];
       if (item.type == MediaType.video) {
         playPauseController.playPause();
         result = KeyEventResult.handled;
@@ -134,8 +137,8 @@ class _GeotagHomeState extends State<GeotagHome> implements HomeController {
       lockParentWindow: true,
     );
     if (path != null) {
-      TaskBinding.instance.addTasks(_selectedItems.length);
-      await for (void _ in items.exportToFolder(path, _selectedItems.toList())) {
+      TaskBinding.instance.addTasks(_selectedIndexes.length);
+      await for (void _ in items.exportToFolder(path, _selectedIndexes.toList())) {
         TaskBinding.instance.onTaskCompleted();
       }
     }
@@ -159,9 +162,11 @@ class _GeotagHomeState extends State<GeotagHome> implements HomeController {
     );
   }
 
-  int? get selectedIndex => _selectedItems.singleOrNull;
+  int? get selectedIndex => _selectedIndexes.singleOrNull;
 
   MediaItem? get selectedItem => selectedIndex == null ? null : items[selectedIndex!];
+
+  Iterable<MediaItem> get selectedItems => items.filter(_selectedIndexes);
 
   void _handleTasksChanged() {
     setState(() {
@@ -216,7 +221,7 @@ class _GeotagHomeState extends State<GeotagHome> implements HomeController {
             children: <Widget>[
               Expanded(
                 child: MainArea(
-                  item: selectedItem,
+                  items: selectedItems,
                   playPauseController: playPauseController,
                 ),
               ),
@@ -245,11 +250,11 @@ class _HomeScope extends InheritedWidget {
 class MainArea extends StatelessWidget {
   const MainArea({
     super.key,
-    required this.item,
+    required this.items,
     required this.playPauseController,
   });
 
-  final MediaItem? item;
+  final Iterable<MediaItem> items;
   final VideoPlayerPlayPauseController playPauseController;
 
   @override
@@ -260,13 +265,13 @@ class MainArea extends StatelessWidget {
       children: <Widget>[
         Expanded(
           child: MainImage(
-            item: item,
+            items: items,
             playPauseController: playPauseController,
           ),
         ),
         SizedBox(
           width: 500,
-          child: MetadataPanel(item),
+          child: MetadataPanel(items),
         ),
       ],
     );
@@ -276,32 +281,40 @@ class MainArea extends StatelessWidget {
 class MainImage extends StatelessWidget {
   const MainImage({
     super.key,
-    required this.item,
+    required this.items,
     required this.playPauseController,
     this.fs = const LocalFileSystem(),
   });
 
-  final MediaItem? item;
+  final Iterable<MediaItem> items;
   final VideoPlayerPlayPauseController playPauseController;
   final FileSystem fs;
 
   @override
   Widget build(BuildContext context) {
-    if (item == null) {
+    if (items.isEmpty) {
       return Container();
     }
 
-    Widget result;
-    switch (item!.type) {
-      case MediaType.photo:
-        result = Image.file(fs.file(item!.photoPath));
-      case MediaType.video:
-        return VideoPlayer(
-          item: item!,
-          playPauseController: playPauseController,
-          fs: fs,
-        );
+    final Widget result;
+    if (items.isSingle) {
+      MediaItem item = items.single;
+      switch (item.type) {
+        case MediaType.photo:
+          result = Image.file(fs.file(item.photoPath));
+        case MediaType.video:
+          return VideoPlayer(
+            item: item,
+            playPauseController: playPauseController,
+            fs: fs,
+          );
+      }
+    } else {
+      result = PhotoPile(
+        items: items.toList().reversed.take(3).toList().reversed,
+      );
     }
+
     return ColoredBox(
       color: Colors.black,
       child: result,
@@ -310,9 +323,9 @@ class MainImage extends StatelessWidget {
 }
 
 class MetadataPanel extends StatefulWidget {
-  const MetadataPanel(this.item, {super.key});
+  const MetadataPanel(this.items, {super.key});
 
-  final MediaItem? item;
+  final Iterable<MediaItem> items;
 
   @override
   State<MetadataPanel> createState() => _MetadataPanelState();
@@ -325,13 +338,18 @@ class _MetadataPanelState extends State<MetadataPanel> {
   late FocusNode latlngFocusNode;
   late final WebViewController webViewController;
 
-  Future<void> _updateRow({bool firstRun = false}) async {
-    if (widget.item == null) {
+  static final DateFormat mmmmdyyyy = DateFormat('MMM d, yyyy');
+  static final DateFormat ehmma = DateFormat('E, h:mm a');
+  static final DateFormat hmma = DateFormat('h:mm a');
+
+  Future<void> _updateLatlngUiElements({bool firstRun = false}) async {
+    if (widget.items.isEmpty) {
       latlngController.text = '';
-    } else {
+    } else if (widget.items.isSingle) {
+      final MediaItem item = widget.items.single;
       String? currentUrl = await webViewController.currentUrl();
-      if (widget.item!.hasLatlng) {
-        final GpsCoordinates coords = widget.item!.coords!;
+      if (item.hasLatlng) {
+        final GpsCoordinates coords = item.coords!;
         latlngController.text = '${coords.latitude}, ${coords.longitude}';
         if (firstRun || currentUrl == null) {
           webViewController.loadRequest(
@@ -344,21 +362,40 @@ class _MetadataPanelState extends State<MetadataPanel> {
         latlngController.text = '';
         webViewController.loadRequest(Uri.parse('https://tvolkert.dev/map.html?initial=0,0'));
       }
+    } else {
+      latlngController.text = '';
     }
     setState(() {});
   }
 
+  Future<void> _updateDateTime(MediaItem item, DateTime dateTime) async {
+    item
+        ..dateTimeOriginal = dateTime
+        ..dateTimeDigitized = dateTime
+        ..isModified = true
+        ..lastModified = DateTime.now()
+        ;
+    await item.commit();
+  }
+
   void _handleEditDateTime() async {
-    DateTime? newDateTime = await DateTimeEditorDialog.show(context, widget.item!.dateTime);
+    if (widget.items.isEmpty) {
+      return;
+    }
+
+    DateTime? initialDateTime = widget.items.isSingle ? widget.items.single.dateTime : null;
+    DateTime? newDateTime = await DateTimeEditorDialog.show(context, initialDateTime);
     if (newDateTime != null) {
-      widget.item!
-          ..dateTimeOriginal = newDateTime
-          ..dateTimeDigitized = newDateTime
-          ..isModified = true
-          ..lastModified = DateTime.now()
-          ;
-      await widget.item!.commit();
-      _updateRow();
+      if (widget.items.isSingle) {
+        await _updateDateTime(widget.items.single, newDateTime);
+      } else {
+        final List<Future<void>> futures = <Future<void>>[];
+        for (final MediaItem item in widget.items) {
+          futures.add(_updateDateTime(item, newDateTime));
+        }
+        await Future.wait<void>(futures);
+      }
+      setState(() {});
     }
   }
 
@@ -375,26 +412,59 @@ class _MetadataPanelState extends State<MetadataPanel> {
     if (value != _isEditingLatlng) {
       _isEditingLatlng = value;
       if (!value) {
-        _saveEdits();
+        _saveLatlngEdits();
       }
     }
   }
 
-  Future<void> _saveEdits() async {
+  Future<void> _updateLatlng(MediaItem item, GpsCoordinates coords) async {
+    item
+        ..latlng = coords.latlng
+        ..isModified = true
+        ..lastModified = DateTime.now()
+        ;
+    await item.commit();
+  }
+
+  Future<void> _saveLatlngEdits() async {
+    if (widget.items.isEmpty) {
+      return;
+    }
+
     try {
       final GpsCoordinates coords = GpsCoordinates.fromString(latlngController.text);
-      if (widget.item!.latlng != coords.latlng) {
-        widget.item!
-            ..latlng = coords.latlng
-            ..isModified = true
-            ..lastModified = DateTime.now()
-            ;
-        await widget.item!.commit();
-        _updateRow();
+      if (widget.items.isSingle) {
+        final MediaItem item = widget.items.single;
+        if (item.latlng != coords.latlng) {
+          await _updateLatlng(item, coords);
+          _updateLatlngUiElements();
+        }
+      } else {
+        final List<Future<void>> futures = <Future<void>>[];
+        for (final MediaItem item in widget.items) {
+          if (item.latlng != coords.latlng) {
+            futures.add(_updateLatlng(item, coords));
+          }
+        }
+        await Future.wait<void>(futures);
+        _updateLatlngUiElements();
       }
     } on FormatException {
       print('invalid gps coordinates');
     }
+  }
+
+  Widget _buildSingleDateTimeDisplay(DateTime? value) {
+    if (value == null) {
+      return const Text('unset', style: TextStyle(fontStyle: FontStyle.italic));
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(mmmmdyyyy.format(value)),
+        Text(ehmma.format(value)),
+      ],
+    );
   }
 
   @override
@@ -404,7 +474,7 @@ class _MetadataPanelState extends State<MetadataPanel> {
     dateTimeFocusNode = FocusNode();
     latlngFocusNode = FocusNode();
     FocusManager.instance.addListener(_handleFocusChanged);
-    _updateRow(firstRun: true);
+    _updateLatlngUiElements(firstRun: true);
     webViewController = WebViewController()
       ..clearCache()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
@@ -424,7 +494,7 @@ class _MetadataPanelState extends State<MetadataPanel> {
   @override
   void didUpdateWidget(covariant MetadataPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _updateRow(firstRun: false);
+    _updateLatlngUiElements(firstRun: false);
   }
 
   @override
@@ -438,10 +508,50 @@ class _MetadataPanelState extends State<MetadataPanel> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.item == null) {
+    if (widget.items.isEmpty) {
       return Container();
     }
 
+    final Widget dateTimeDisplay;
+    if (widget.items.isSingle) {
+      dateTimeDisplay = _buildSingleDateTimeDisplay(widget.items.single.dateTime);
+    } else {
+      DateTime? min, max;
+      for (MediaItem item in widget.items) {
+        final DateTime? dateTime = item.dateTime;
+        if (dateTime != null) {
+          min ??= dateTime;
+          max ??= dateTime;
+          min = min.earlier(dateTime);
+          max = max.later(dateTime);
+        }
+      }
+      if (min == max) {
+        dateTimeDisplay = _buildSingleDateTimeDisplay(min);
+      } else {
+        assert(min != null);
+        assert(max != null);
+        final String minValue = mmmmdyyyy.format(min!);
+        final String maxValue = mmmmdyyyy.format(max!);
+        if (minValue == maxValue) {
+          dateTimeDisplay = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(minValue),
+              Text('${ehmma.format(min)} - ${hmma.format(max)}'),
+            ],
+          );
+        } else {
+          dateTimeDisplay = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('$minValue - $maxValue'),
+              Text('${ehmma.format(min)} - ${ehmma.format(max)}'),
+            ],
+          );
+        }
+      }
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
@@ -462,13 +572,7 @@ class _MetadataPanelState extends State<MetadataPanel> {
             children: <Widget>[
               const Icon(Icons.calendar_today_rounded),
               const SizedBox(width: 30),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(DateFormat('MMM d, yyyy').format(widget.item!.dateTime ?? DateTime.now())),
-                  Text(DateFormat('E, h:mm a').format(widget.item!.dateTime ?? DateTime.now())),
-                ],
-              ),
+              dateTimeDisplay,
               Expanded(child: Container()),
               IconButton(
                 icon: const Icon(Icons.edit),
@@ -484,7 +588,12 @@ class _MetadataPanelState extends State<MetadataPanel> {
             children: <Widget>[
               const Icon(Icons.photo_outlined),
               const SizedBox(width: 30),
-              SelectableText(widget.item!.path.split('/').last),
+              widget.items.isSingle
+                  ? SelectableText(widget.items.single.path.split('/').last)
+                  : Text(
+                    '${widget.items.length} items',
+                    style: const TextStyle(fontStyle: FontStyle.italic),
+                  ),
             ],
           ),
         ),

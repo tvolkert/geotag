@@ -1,5 +1,15 @@
 import 'package:image/image.dart';
 
+extension DateTimeExtensions on DateTime {
+  DateTime earlier(DateTime other) {
+    return isBefore(other) ? this : other;
+  }
+
+  DateTime later(DateTime other) {
+    return isAfter(other) ? this : other;
+  }
+}
+
 extension VideoDateTime on DateTime {
   String toVideoString() {
     // 2010-01-01 00:00:00

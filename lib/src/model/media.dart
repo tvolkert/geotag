@@ -424,6 +424,8 @@ class MediaItems {
     return index < 0 ? -1 : index;
   }
 
+  Iterable<MediaItem> filter(Iterable<int> indexes) => _filterItems(indexes).items;
+
   MediaItem operator [](int index) => _items[index];
 
   Stream<MediaItem> addFiles(Iterable<String> paths) async* {
