@@ -5,7 +5,7 @@ import 'package:flutter/widgets.dart';
 import '../model/files.dart';
 import '../model/media.dart';
 
-class PhotoPile extends StatelessWidget {
+class PhotoPile extends StatefulWidget {
   const PhotoPile({
     super.key,
     required this.items,
@@ -13,7 +13,42 @@ class PhotoPile extends StatelessWidget {
 
   final Iterable<MediaItem> items;
 
-  static const List<double> _rotations = <double>[0.05, -0.1];
+  @override
+  State<PhotoPile> createState() => _PhotoPileState();
+}
+
+class _PhotoPileState extends State<PhotoPile> {
+  final List<double> _adjustments = <double>[];
+  final math.Random _rand = math.Random();
+
+  static const List<double> _rotations = <double>[0.05, -0.07];
+
+  void _initAdjustments() {
+    _adjustments.clear();
+    for (MediaItem _ in widget.items) {
+      _adjustments.add((_rand.nextInt(8) - 4) / 100);
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _initAdjustments();
+  }
+
+  @override
+  void didUpdateWidget(covariant PhotoPile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _initAdjustments();
+  }
+
+  Widget _buildPhoto(int index, MediaItem item) {
+    final double rotation = index == widget.items.length - 1 ? 0 : _rotations[index];
+    return Transform.rotate(
+      angle: math.pi * rotation + _adjustments[index],
+      child: Image.file(FilesBinding.instance.fs.file(item.photoPath)),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -22,15 +57,11 @@ class PhotoPile extends StatelessWidget {
       padding: const EdgeInsets.all(50),
       child: Center(
         child: Stack(
+          fit: StackFit.expand,
           children: <Widget>[
-            ...items.take(items.length - 1).map<Widget>((MediaItem item) {
-              final double rotation = _rotations[i++];
-              return Transform.rotate(
-                angle: math.pi * rotation,
-                child: Image.file(FilesBinding.instance.fs.file(item.photoPath)),
-              );
+            ...widget.items.map<Widget>((MediaItem item) {
+              return _buildPhoto(i++, item);
             }),
-            Image.file(FilesBinding.instance.fs.file(items.last.photoPath)),
           ],
         ),
       ),
