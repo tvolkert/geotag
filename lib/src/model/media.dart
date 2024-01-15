@@ -359,17 +359,20 @@ final class ById extends MediaItemComparator {
 final class ByDate extends MediaItemComparator {
   const ByDate(super.direction);
 
+  static const ById _byId = ById(Ascending());
+
   @override
   @protected
   int doCompare(MediaItem a, MediaItem b) {
     if (a.dateTime == null && b.dateTime == null) {
-      return 0;
+      return _byId.compare(a, b);
     } else if (a.dateTime == null) {
       return -1;
     } else if (b.dateTime == null) {
       return 1;
     } else {
-      return a.dateTime!.compareTo(b.dateTime!);
+      final int result = a.dateTime!.compareTo(b.dateTime!);
+      return result != 0 ? result : _byId.compare(a, b);
     }
   }
 }
