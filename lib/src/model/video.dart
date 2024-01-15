@@ -17,7 +17,7 @@ class Mp4 {
 
   static Set<String> allowedExtensions = <String>{'m4v', 'mp4', 'mov'};
 
-  Metadata extractMetadata() {
+  Metadata extractMetadata(FileSystem fs) {
     final Uint8List thumbnailBytes = _getFrameBytes();
     final io.ProcessResult ffprobe = io.Process.runSync(
       '/opt/homebrew/bin/ffprobe',
@@ -46,16 +46,21 @@ class Mp4 {
         coordinates = GpsCoordinates(latitude, longitude);
       }
     }
+
     return Metadata(
       thumbnail: thumbnailBytes,
-      dateTime: dateTime,
+      photoPath: _extractAndWriteFrame(fs),
+      dateTimeOriginal: dateTime,
+      dateTimeDigitized: dateTime,
       coordinates: coordinates,
     );
   }
 
-  void extractFrame(FileSystem fs, String extractedPath) {
+  String _extractAndWriteFrame(FileSystem fs) {
+    final String extractedPath = '$path.jpg';
     final Uint8List bytes = _getFrameBytes(size: 1024, quality: 3);
     fs.file(extractedPath).writeAsBytesSync(bytes);
+    return extractedPath;
   }
 
   /// [size] represents the square bounding box inside which the extracted

@@ -539,7 +539,7 @@ class MediaItems {
         fs.path.join(message.appSupportPath, 'media'),
       );
       for (String path in message.paths) {
-        final String extension = path.toLowerCase().split('.').last;
+        final String extension = path.split('.').last.toLowerCase();
         final Uint8List bytes = fs.file(path).readAsBytesSync();
         chrootFs.file(path).parent.createSync(recursive: true);
         chrootFs.file(path).writeAsBytesSync(bytes);
@@ -550,40 +550,29 @@ class MediaItems {
           chrootFs.file(path).readAsBytesSync(),
         ));
 
-        if (JpegFile.allowedExtensions.contains(extension)) {
-          final JpegFile jpeg = JpegFile(path);
-          final GpsCoordinates? coords = jpeg.getGpsCoordinates();
-          final DateTime? dateTimeOriginal = jpeg.getDateTimeOriginal();
-          final DateTime? dateTimeDigitized = jpeg.getDateTimeDigitized();
+        Future<DbRow> insertRow(Metadata metadata, MediaType type) async {
           MediaItem item = MediaItem._empty()
-            ..type = MediaType.photo
+            ..type = type
             ..path = chrootPath
-            ..photoPath = chrootPath
-            ..thumbnail = jpeg.bytes
-            ..latlng = coords?.latlng
-            ..dateTimeOriginal = dateTimeOriginal
-            ..dateTimeDigitized = dateTimeDigitized
-            ..lastModified = DateTime.now()
-            ..isModified = false;
-          item.id = await db.insert('MEDIA', item._unsavedRow);
-          yield item._unsavedRow;
-        } else if (Mp4.allowedExtensions.contains(extension)) {
-          final Mp4 mp4 = Mp4(path);
-          final Metadata metadata = mp4.extractMetadata();
-          final String extractedFramePath = '$path.jpg';
-          mp4.extractFrame(chrootFs, extractedFramePath);
-          MediaItem item = MediaItem._empty()
-            ..type = MediaType.video
-            ..path = chrootPath
-            ..photoPath = '${chrootFs.root}$extractedFramePath'
+            ..photoPath = '${chrootFs.root}${metadata.photoPath}'
             ..thumbnail = metadata.thumbnail
             ..latlng = metadata.coordinates?.latlng
-            ..dateTimeOriginal = metadata.dateTime
-            ..dateTimeDigitized = metadata.dateTime
+            ..dateTimeOriginal = metadata.dateTimeOriginal
+            ..dateTimeDigitized = metadata.dateTimeDigitized
             ..lastModified = DateTime.now()
             ..isModified = false;
           item.id = await db.insert('MEDIA', item._unsavedRow);
-          yield item._unsavedRow;
+          return item._unsavedRow;
+        }
+
+        if (JpegFile.allowedExtensions.contains(extension)) {
+          final JpegFile jpeg = JpegFile(path);
+          final Metadata metadata = jpeg.extractMetadata();
+          yield await insertRow(metadata, MediaType.photo);
+        } else if (Mp4.allowedExtensions.contains(extension)) {
+          final Mp4 mp4 = Mp4(path);
+          final Metadata metadata = mp4.extractMetadata(chrootFs);
+          yield await insertRow(metadata, MediaType.video);
         } else {
           yield* _yieldError(UnsupportedError('Unsupported file: $path'));
         }
