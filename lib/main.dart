@@ -427,7 +427,7 @@ class _MetadataPanelState extends State<MetadataPanel> {
   }
 
   Future<void> _saveLatlngEdits() async {
-    if (widget.items.isEmpty) {
+    if (widget.items.isEmpty || latlngController.text.isEmpty) {
       return;
     }
 

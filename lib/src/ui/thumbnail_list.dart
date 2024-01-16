@@ -10,6 +10,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import '../../main.dart';
+import '../foundation/reentrant_detector.dart';
 import '../model/media.dart';
 import '../model/tasks.dart';
 import 'confirm_delete_files.dart';
@@ -27,6 +28,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
   late final ListViewSelectionController _selectionController;
   late final FocusNode _focusNode;
   final _ScrollToVisibleController _scrollToVisibleController = _ScrollToVisibleController();
+  final ReentrantDetector _jumpToScrollCheck = ReentrantDetector();
   MediaItem? _selectedItem;
 
   static const double itemExtent = 175;
@@ -41,12 +43,14 @@ class _ThumbnailListState extends State<ThumbnailList> {
         final int oldSelectedIndex = selectedIndex!;
         final int newSelectedIndex = items.indexOf(_selectedItem!);
         _selectionController.selectedIndex = newSelectedIndex;
-        SchedulerBinding.instance.addPostFrameCallback((Duration timeStamp) {
-          final double leftScrollOffset = newSelectedIndex * itemExtent;
-          _scrollController.jumpTo(newSelectedIndex > oldSelectedIndex
-              ? leftScrollOffset - context.size!.width + itemExtent
-              : leftScrollOffset);
-        });
+        if (!_jumpToScrollCheck.isReentrant) {
+          SchedulerBinding.instance.addPostFrameCallback((Duration timeStamp) {
+            final double leftScrollOffset = newSelectedIndex * itemExtent;
+            _scrollController.jumpTo(newSelectedIndex > oldSelectedIndex
+                ? leftScrollOffset - context.size!.width + itemExtent
+                : leftScrollOffset);
+          });
+        }
       }
     });
   }
@@ -143,8 +147,8 @@ class _ThumbnailListState extends State<ThumbnailList> {
     assert(indexes.every((int index) => index < items.length));
     TaskBinding.instance.addTasks(indexes.length);
     setState(() {
-      final newNextIndex = _selectionController.lastSelectedIndex + 1 - indexes.length;
-      if (newNextIndex < items.length - indexes.length) {
+      final newNextIndex = _selectionController.lastSelectedIndex + 1;
+      if (newNextIndex < items.length) {
         _selectionController.selectedIndex = newNextIndex;
       } else if (_selectionController.firstSelectedIndex > 0) {
         _selectionController.selectedIndex = _selectionController.firstSelectedIndex - 1;
@@ -153,10 +157,12 @@ class _ThumbnailListState extends State<ThumbnailList> {
         _focusNode.unfocus();
       }
     });
-    await for (MediaItem _ in items.deleteFiles(indexes)) {
-      TaskBinding.instance.onTaskCompleted();
-      setState(() {});
-    }
+    await _jumpToScrollCheck.runAsyncCallback(() async {
+      await for (MediaItem _ in items.deleteFiles(indexes)) {
+        TaskBinding.instance.onTaskCompleted();
+        setState(() {});
+      }
+    });
   }
 
   @override
