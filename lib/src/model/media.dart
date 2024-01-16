@@ -647,8 +647,14 @@ class MediaItems {
   Stream<DbRow> _exportToFolderWorker(_ExportToFolderMessage message) async* {
     try {
       const FileSystem fs = LocalFileSystem();
-      final Directory parent = fs.directory(message.folder);
+      final Directory root = fs.directory(message.folder);
+      assert(root.existsSync());
       for (MediaItem item in message.items) {
+        final int year = item.hasDateTime ? item.dateTime!.year : 0;
+        final Directory parent = root.childDirectory(year.toString().padLeft(4, '0'));
+        if (!parent.existsSync()) {
+          parent.createSync();
+        }
         final String path = item.path;
         final String basename = fs.file(path).basename;
         File target = parent.childFile(basename);
