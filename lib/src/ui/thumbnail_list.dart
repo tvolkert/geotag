@@ -75,7 +75,11 @@ class _ThumbnailListState extends State<ThumbnailList> {
         final int newSelectedIndex = _selectionController.firstSelectedIndex - 1;
         if (newSelectedIndex >= 0) {
           setState(() {
-            _selectionController.selectedIndex = newSelectedIndex;
+            if (isShiftKeyPressed()) {
+              _selectionController.addSelectedIndex(newSelectedIndex);
+            } else {
+              _selectionController.selectedIndex = newSelectedIndex;
+            }
             _scrollToVisibleController.notifyListener(
               newSelectedIndex,
               ScrollPositionAlignmentPolicy.keepVisibleAtStart,
@@ -87,7 +91,11 @@ class _ThumbnailListState extends State<ThumbnailList> {
         final int newSelectedIndex = _selectionController.lastSelectedIndex + 1;
         if (newSelectedIndex < items.length) {
           setState(() {
-            _selectionController.selectedIndex = newSelectedIndex;
+            if (isShiftKeyPressed()) {
+              _selectionController.addSelectedIndex(newSelectedIndex);
+            } else {
+              _selectionController.selectedIndex = newSelectedIndex;
+            }
             _scrollToVisibleController.notifyListener(
               newSelectedIndex,
               ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
