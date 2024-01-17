@@ -111,6 +111,13 @@ class _ThumbnailListState extends State<ThumbnailList> {
             items.comparator = const ById(Ascending());
         }
         result = KeyEventResult.handled;
+      } else if (event.logicalKey == LogicalKeyboardKey.keyA && isPlatformCommandKeyPressed()) {
+        if (items.isNotEmpty) {
+          setState(() {
+            _selectionController.selectedRange = Span(0, items.length - 1);
+          });
+        }
+        result = KeyEventResult.handled;
       }
     }
     return result;
