@@ -13,6 +13,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'src/extensions/date_time.dart';
 import 'src/extensions/iterable.dart';
 import 'src/model/app.dart';
+import 'src/model/files.dart';
 import 'src/model/gps.dart';
 import 'src/model/image.dart';
 import 'src/model/media.dart';
@@ -301,7 +302,7 @@ class MainImage extends StatelessWidget {
       MediaItem item = items.single;
       switch (item.type) {
         case MediaType.photo:
-          result = Image.file(fs.file(item.photoPath));
+          result = SinglePhoto(path: item.photoPath);
         case MediaType.video:
           return VideoPlayer(
             item: item,
@@ -318,6 +319,49 @@ class MainImage extends StatelessWidget {
     return ColoredBox(
       color: Colors.black,
       child: result,
+    );
+  }
+}
+
+class SinglePhoto extends StatefulWidget {
+  const SinglePhoto({
+    super.key,
+    required this.path,
+  });
+
+  final String path;
+
+  @override
+  State<SinglePhoto> createState() => _SinglePhotoState();
+}
+
+class _SinglePhotoState extends State<SinglePhoto> {
+  String? _lastPath;
+
+  @override
+  void didUpdateWidget(covariant SinglePhoto oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.path != oldWidget.path) {
+      _lastPath = oldWidget.path;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final FileSystem fs = FilesBinding.instance.fs;
+    // TODO: Experiment with creating and using SynchronousFileImage provider
+    // to see if it enables us to not need to use this framebuilder trick.
+    return Image.file(
+      fs.file(widget.path),
+      frameBuilder: (BuildContext context, Widget child, int? frame, bool wasSynchronouslyLoaded) {
+        if (wasSynchronouslyLoaded) {
+          return child;
+        } else if (frame != null || _lastPath == null) {
+          return child;
+        } else {
+          return Image.file(fs.file(_lastPath));
+        }
+      },
     );
   }
 }
