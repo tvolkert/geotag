@@ -199,17 +199,26 @@ class _GeotagHomeState extends State<GeotagHome> implements HomeController {
           leading: _getLeading(),
           actions: <Widget>[
             IconButton(
-              icon: const Icon(Icons.add_a_photo_outlined),
+              icon: const Icon(
+                Icons.add_a_photo_outlined,
+                color: Colors.white,
+              ),
               tooltip: 'Add photos & videos to library',
               onPressed: _launchFilePicker,
             ),
             IconButton(
-              icon: const Icon(Icons.save),
+              icon: Icon(
+                Icons.save,
+                color: _taskProgress == null && items.containsModified ? Colors.white : null,
+              ),
               tooltip: 'Save all edits',
               onPressed: _taskProgress == null && items.containsModified ? _writeEditsToDisk : null,
             ),
             IconButton(
-              icon: const Icon(Icons.drive_folder_upload),
+              icon: Icon(
+                Icons.drive_folder_upload,
+                color: _taskProgress == null ? Colors.white : null,
+              ),
               tooltip: 'Export to folder',
               onPressed: _taskProgress == null ? _exportToFolder : null,
             ),
