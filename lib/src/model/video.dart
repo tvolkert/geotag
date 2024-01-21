@@ -18,7 +18,7 @@ class Mp4 {
   static Set<String> allowedExtensions = <String>{'m4v', 'mp4', 'mov'};
 
   Metadata extractMetadata(FileSystem fs) {
-    final Uint8List thumbnailBytes = _getFrameBytes();
+    final Uint8List thumbnailBytes = getFrameBytes();
     final io.ProcessResult ffprobe = io.Process.runSync(
       '/opt/homebrew/bin/ffprobe',
       <String>[path],
@@ -58,7 +58,7 @@ class Mp4 {
 
   String _extractAndWriteFrame(FileSystem fs) {
     final String extractedPath = '$path.jpg';
-    final Uint8List bytes = _getFrameBytes(size: 1024, quality: 3);
+    final Uint8List bytes = getFrameBytes(size: 1024, quality: 3);
     fs.file(extractedPath).writeAsBytesSync(bytes);
     return extractedPath;
   }
@@ -69,7 +69,7 @@ class Mp4 {
   /// [quality] values range from 1 to 31, with 1 being the highest quality and
   /// 31 being the lowest quality. The higher the quality, the larger the file
   /// size.
-  Uint8List _getFrameBytes({
+  Uint8List getFrameBytes({
     int size = 320,
     int quality = 6,
   }) {

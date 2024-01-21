@@ -36,14 +36,16 @@ class Isolates {
       }
     };
     try {
-      Isolate.spawn<_RemoteRunner<R>>(
-        _RemoteRunner._remoteExecute,
-        _RemoteRunner<R>(worker, resultPort.sendPort),
-        onError: resultPort.sendPort,
-        onExit: resultPort.sendPort,
-        errorsAreFatal: false,
-        debugName: debugName,
-      ).catchError((dynamic error, StackTrace stack) {
+      runZonedGuarded<void>(() {
+        Isolate.spawn<_RemoteRunner<R>>(
+          _RemoteRunner._remoteExecute,
+          _RemoteRunner<R>(worker, resultPort.sendPort),
+          onError: resultPort.sendPort,
+          onExit: resultPort.sendPort,
+          errorsAreFatal: false,
+          debugName: debugName,
+        );
+      }, (dynamic error, StackTrace stack) {
         // Sending the computation failed asynchronously.
         // Do not expect a response, report the error asynchronously.
         resultPort.close();

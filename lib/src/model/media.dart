@@ -1,5 +1,7 @@
 // ignore_for_file: avoid_print
 
+import 'dart:async';
+
 import 'package:chicago/chicago.dart' as chicago show binarySearch;
 import 'package:collection/collection.dart';
 import 'package:file/chroot.dart';
@@ -7,8 +9,10 @@ import 'package:file/file.dart';
 import 'package:file/local.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
+import 'package:geotag/src/extensions/iterable.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart' as sqflite;
 
+import '../foundation/base.dart';
 import 'app.dart';
 import 'db.dart';
 import 'gps.dart';
@@ -99,6 +103,13 @@ class MediaItem {
   ///
   /// Changes to this value will not be visible (and listeners will not be
   /// notified) until [commit] is called.
+  ///
+  /// See also:
+  ///
+  ///  * [JpegFile.getThumbnailBytes], which is used to extract the bytes for a
+  ///    thumbnail version of a JPEG image.
+  ///  * [Mp4.getFrameBytes], which is used to extract the bytes for a thumbnail
+  ///    version of an MPEG-4 video.
   Uint8List get thumbnail => _row['THUMBNAIL'] as Uint8List;
   set thumbnail(Uint8List value) => _unsavedRow['THUMBNAIL'] = value;
 
@@ -234,11 +245,13 @@ class MediaItem {
   /// Writes this media item's metadata fields to the database and notifies
   /// listeners that the metadata has changed.
   Future<void> commit() async {
-    final MediaItems items = MediaBinding.instance.items;
+    final RootMediaItems items = MediaBinding.instance.items;
     final int oldIndex = items.indexOf(this);
     await _writeToDb(DatabaseBinding.instance.db);
     _persistAndNotify();
     if (oldIndex >= 0) {
+      // The edits have caused this item to be in a different position in the
+      // [MediaItems] list.
       items._removeAndReinsertFrom(oldIndex);
     }
   }
@@ -265,30 +278,15 @@ class MediaItem {
 
   @override
   String toString() {
-    return '<MediaItem(type=$type, path=$path)>';
+    return '<MediaItem(type=$type, id=$id, path=$path)>';
   }
 
   @override
-  int get hashCode => path.hashCode;
+  int get hashCode => id.hashCode;
 
   @override
   bool operator ==(Object other) {
-    return other is MediaItem && other.path == path;
-  }
-}
-
-class _FilteredItems {
-  const _FilteredItems(this.items, this.lookup);
-
-  /// The filtered items, guaranteed to be a subset of [MediaItems._items]
-  final List<MediaItem> items;
-
-  /// Maps [MediaItem.path] to the index of the item in [MediaItems._items].
-  final Map<String, int> lookup;
-
-  int getOriginalIndex(int filteredIndex) {
-    final String path = items[filteredIndex].path;
-    return lookup[path]!;
+    return other is MediaItem && other.id == id;
   }
 }
 
@@ -335,6 +333,14 @@ sealed class MediaItemComparator {
   @nonVirtual
   int compare(MediaItem a, MediaItem b) => direction.apply(doCompare(a, b));
 
+  /// Compares two media items.
+  ///
+  /// Returns -1, 0, or 1 if item [a] is less than, equal to, or greater than
+  /// item [b], respectively.
+  ///
+  /// Subclasses are only ever allowed to return 0 if [a] and [b] are
+  /// represented by the same [MediaItem.id]; otherwise, comparators must
+  /// find a way to break the equality.
   @protected
   int doCompare(MediaItem a, MediaItem b);
 
@@ -377,24 +383,255 @@ final class ByDate extends MediaItemComparator {
   }
 }
 
-class MediaItems {
-  MediaItems._from(this._items, this._comparator);
+base class MediaItemsView {
+  MediaItemsView._(this._items);
 
-  MediaItems.fromDbResults(DbResults results)
-      : _comparator = const ById(Ascending()),
-        _items = List<MediaItem>.generate(results.length, (int index) {
-          return MediaItem.fromDbRow(results[index]);
-        });
+  MediaItemsView.empty() : _items = <MediaItem>[];
 
-  MediaItemComparator _comparator;
+  MediaItemsView.from(Iterable<MediaItem> items) : _items = List<MediaItem>.from(items);
+
   final List<MediaItem> _items;
 
-  MediaItemComparator get comparator => _comparator;
-  set comparator(MediaItemComparator value) {
-    if (value != _comparator) {
-      _comparator = value;
-      _items.sort(value.compare);
-      MediaBinding.instance._notifyCollectionChanged();
+  bool get isEmpty => _items.isEmpty;
+
+  bool get isNotEmpty => _items.isNotEmpty;
+
+  MediaItem get first => _items.first;
+
+  bool get isSingle => _items.isSingle;
+
+  MediaItem get single => _items.single;
+
+  MediaItem? get singleOrNull => _items.singleOrNull;
+
+  int get length => _items.length;
+
+  MediaItem operator [](int index) => _items[index];
+
+  Iterable<T> map<T>(T Function(MediaItem item) toElement) => _items.map<T>(toElement);
+
+  void forEach(void Function(MediaItem item) action) => _items.forEach(action);
+}
+
+abstract base class MediaItems extends MediaItemsView {
+  MediaItems._(List<MediaItem> items) : super._(items);
+
+  int _generation = 1;
+
+  RootMediaItems get root => MediaBinding.instance.items;
+
+  MediaItemComparator get comparator;
+  set comparator(MediaItemComparator value);
+
+  bool get containsModified => _items.where((MediaItem item) => item.isModified).isNotEmpty;
+
+  static bool _isModified(MediaItem item) => item.isModified;
+
+  MediaItems get whereModified => where(const PredicateMediaItemFilter(_isModified));
+
+  MediaItems where(MediaItemFilter filter) => FilteredMediaItems(filter, this);
+
+  int indexOf(MediaItem item) {
+    final int index = chicago.binarySearch(_items, item, compare: comparator.compare);
+    return index < 0 ? -1 : index;
+  }
+
+  Stream<void> writeFilesToDisk() {
+    // TODO: provide hook whereby caller can cancel operation.
+    final List<MediaItem> localItems = List<MediaItem>.from(_items);
+    final _WriteToDiskMessage message = _WriteToDiskMessage._(
+      DatabaseBinding.instance.dbFile.absolute.path,
+      localItems,
+    );
+    final Stream<int> iter = Isolates.stream<_WriteToDiskMessage, int>(
+      _writeToDiskWorker,
+      message,
+      debugLabel: 'writeFilesToDisk',
+    );
+    final StreamController<void> controller = StreamController<void>();
+    iter.listen((int i) {
+      // The changes have already been written to disk and saved to the
+      // database, but the changes were done in a separate isolate, so the
+      // local row object in this isolate needs to be updated to match.
+      localItems[i]
+        ..isModified = false
+        .._persistAndNotify();
+      controller.add(null);
+    }, onError: controller.addError, onDone: controller.close);
+    return controller.stream;
+  }
+
+  Stream<void> deleteFiles() {
+    // TODO: provide hook whereby caller can cancel operation.
+    final List<MediaItem> localItems = List<MediaItem>.from(_items);
+    final _DeleteFilesMessage message = _DeleteFilesMessage._(
+      DatabaseBinding.instance.dbFile.absolute.path,
+      localItems,
+    );
+    final Stream<int> iter = Isolates.stream<_DeleteFilesMessage, int>(
+      _deleteFilesWorker,
+      message,
+      debugLabel: 'deleteFiles',
+    );
+    final StreamController<void> controller = StreamController<void>();
+    iter.listen((int i) {
+      // The database has already been updated, and the file has been deleted
+      // from the file system, but the changes were done in a separate isolate,
+      // so the items list needs to be updated to match.
+      final MediaItem removed = localItems[i];
+      root._removeAt(root.indexOf(removed));
+      controller.add(null);
+    }, onError: controller.addError, onDone: controller.close);
+    return controller.stream;
+  }
+
+  Stream<void> exportToFolder(String folder) {
+    final _ExportToFolderMessage message = _ExportToFolderMessage._(
+      folder,
+      List<MediaItem>.from(_items),
+    );
+    final Stream<DbRow> iter = Isolates.stream<_ExportToFolderMessage, DbRow>(
+      _exportToFolderWorker,
+      message,
+      debugLabel: 'exportToFolder',
+    );
+    final StreamController<void> controller = StreamController<void>();
+    iter.listen((DbRow row) {
+      controller.add(null);
+    }, onError: controller.addError, onDone: controller.close);
+    return controller.stream;
+  }
+
+  static Stream<int> _writeToDiskWorker(_WriteToDiskMessage message) async* {
+    sqflite.databaseFactory = sqflite.databaseFactoryFfi;
+    final sqflite.Database db = await sqflite.openDatabase(message.dbPath);
+    for (int i = 0; i < message.items.length; i++) {
+      try {
+        final MediaItem item = message.items[i];
+        switch (item.type) {
+          case MediaType.photo:
+            final JpegFile jpeg = JpegFile(item.path);
+            bool needsWrite = false;
+            if (item.hasDateTimeOriginal) {
+              needsWrite = true;
+              jpeg.setDateTimeOriginal(item.dateTimeOriginal!);
+            }
+            if (item.hasDateTimeDigitized) {
+              needsWrite = true;
+              jpeg.setDateTimeDigitized(item.dateTimeDigitized!);
+            }
+            if (item.hasLatlng) {
+              needsWrite = true;
+              jpeg.setGpsCoordinates(GpsCoordinates.fromString(item.latlng!));
+            }
+            if (needsWrite) {
+              jpeg.write();
+            }
+          case MediaType.video:
+            final Mp4 mp4 = Mp4(item.path);
+            await mp4.writeMetadata(dateTime: item.dateTime, coordinates: item.coords);
+        }
+        item.isModified = false;
+        await item._writeToDb(db);
+        yield i;
+      } catch (error, stack) {
+        yield* Stream<int>.error(error, stack);
+      }
+    }
+  }
+
+  static Stream<int> _deleteFilesWorker(_DeleteFilesMessage message) async* {
+    sqflite.databaseFactory = sqflite.databaseFactoryFfi;
+    final sqflite.Database db = await sqflite.openDatabase(message.dbPath);
+    const FileSystem fs = LocalFileSystem();
+    // Traverse the list backwards so that our stream of indexes will be valid
+    // even as we remove items from the list.
+    for (int i = message.items.length - 1; i >= 0; i--) {
+      try {
+        final MediaItem item = message.items[i];
+        fs.file(item.path).deleteSync();
+        if (item.path != item.photoPath) {
+          fs.file(item.photoPath).deleteSync();
+        }
+        await db.delete('MEDIA', where: 'PATH = ?', whereArgs: [item.path]);
+        yield i;
+      } catch (error, stack) {
+        yield* Stream<int>.error(error, stack);
+      }
+    }
+  }
+
+  static Stream<DbRow> _exportToFolderWorker(_ExportToFolderMessage message) async* {
+    const FileSystem fs = LocalFileSystem();
+    final Directory root = fs.directory(message.folder);
+    assert(root.existsSync());
+    for (MediaItem item in message.items) {
+      try {
+        final int year = item.hasDateTime ? item.dateTime!.year : 0;
+        final Directory parent = root.childDirectory(year.toString().padLeft(4, '0'));
+        if (!parent.existsSync()) {
+          parent.createSync();
+        }
+        final String path = item.path;
+        final String basename = fs.file(path).basename;
+        File target = parent.childFile(basename);
+        for (int i = 1; target.existsSync(); i++) {
+          // Resolve collision
+          target = parent.childFile('$basename ($i)');
+        }
+        // https://github.com/flutter/flutter/issues/140763
+        await fs.file(path).copy(target.path);
+        yield item._row;
+      } catch (error, stack) {
+        yield* Stream<DbRow>.error(error, stack);
+      }
+    }
+  }
+}
+
+final class EmptyMediaItems extends MediaItems {
+  EmptyMediaItems() : super._(<MediaItem>[]);
+
+  @override
+  MediaItemComparator get comparator => const ById(Ascending());
+
+  @override
+  set comparator(MediaItemComparator value) => throw UnsupportedError('comparator=');
+
+  @override
+  Stream<void> writeFilesToDisk() => throw UnsupportedError('writeFilesToDisk');
+
+  @override
+  Stream<void> deleteFiles() => throw UnsupportedError('deleteFiles');
+
+  @override
+  Stream<void> exportToFolder(String folder) => throw UnsupportedError('exportToFolder');
+}
+
+final class RootMediaItems extends MediaItems {
+  RootMediaItems.fromDbResults(DbResults results) : _comparator = const ById(Ascending()), super._(
+    List<MediaItem>.generate(results.length, (int index) {
+      return MediaItem.fromDbRow(results[index]);
+    }),
+  );
+
+  _MediaNotifier? _notifier;
+  MediaItemComparator _comparator;
+
+  @override
+  RootMediaItems get root => this;
+
+  void addListener(VoidCallback listener) {
+    _notifier ??= _MediaNotifier();
+    _notifier!.addListener(listener);
+  }
+
+  void removeListener(VoidCallback listener) {
+    assert(_notifier != null);
+    _notifier!.removeListener(listener);
+    if (!_notifier!.hasListeners) {
+      _notifier!.dispose();
+      _notifier = null;
     }
   }
 
@@ -405,33 +642,38 @@ class MediaItems {
     assert(newIndex < 0);
     newIndex = -newIndex - 1;
     _items.insert(newIndex, item);
+    _generation++;
     if (index != newIndex) {
-      MediaBinding.instance._notifyCollectionChanged();
+      _notify();
     }
   }
 
-  bool get isEmpty => _items.isEmpty;
-
-  bool get isNotEmpty => _items.isNotEmpty;
-
-  int get length => _items.length;
-
-  bool get containsModified => _items.where((MediaItem item) => item.isModified).isNotEmpty;
-
-  MediaItems get whereModified {
-    return MediaItems._from(_items.where((MediaItem item) => item.isModified).toList(), comparator);
+  void _notify() {
+    _notifier?.notifyListeners();
   }
 
-  int indexOf(MediaItem item) {
-    final int index = chicago.binarySearch(_items, item, compare: comparator.compare);
-    return index < 0 ? -1 : index;
+  MediaItem _removeAt(int index) {
+    assert(index >= 0);
+    final MediaItem removed = _items.removeAt(index);
+    _generation++;
+    _notify();
+    return removed;
   }
 
-  Iterable<MediaItem> filter(Iterable<int> indexes) => _filterItems(indexes).items;
+  @override
+  MediaItemComparator get comparator => _comparator;
 
-  MediaItem operator [](int index) => _items[index];
+  @override
+  set comparator(MediaItemComparator value) {
+    if (value != _comparator) {
+      _comparator = value;
+      _items.sort(value.compare);
+      _generation++;
+      _notify();
+    }
+  }
 
-  Stream<MediaItem> addFiles(Iterable<String> paths) async* {
+  Stream<void> addFiles(Iterable<String> paths) {
     final Directory appSupportDir = FilesBinding.instance.applicationSupportDirectory;
     final _AddFilesMessage message = _AddFilesMessage._(
       DatabaseBinding.instance.dbFile.absolute.path,
@@ -443,102 +685,34 @@ class MediaItems {
       message,
       debugLabel: 'addFiles',
     );
-    await for (final DbRow row in rows) {
+    final StreamController<void> controller = StreamController<void>();
+    rows.listen((DbRow row) {
       final MediaItem item = MediaItem.fromDbRow(row);
       final int index = chicago.binarySearch<MediaItem>(_items, item, compare: comparator.compare);
       assert(index < 0);
       _items.insert(-index - 1, item);
+      _generation++;
+      _notify();
       assert(() {
         final List<MediaItem> copy = List<MediaItem>.from(_items)..sort(_comparator.compare);
         return const ListEquality<MediaItem>().equals(_items, copy);
       }());
-      yield item;
-      MediaBinding.instance._notifyCollectionChanged();
-    }
-  }
-
-  Stream<MediaItem> writeFilesToDisk() async* {
-    // TODO: provide hook whereby caller can cancel operation.
-    final _WriteToDiskMessage message = _WriteToDiskMessage._(
-      DatabaseBinding.instance.dbFile.absolute.path,
-      List<MediaItem>.from(_items),
-    );
-    final Stream<int> iter = Isolates.stream<_WriteToDiskMessage, int>(
-      _writeToDiskWorker,
-      message,
-      debugLabel: 'writeFilesToDisk',
-    );
-    await for (final int i in iter) {
-      // The changes have already been written to disk and saved to the
-      // database, but the changes were done in a separate isolate, so the
-      // local row object in this isolate needs to be updated to match.
-      _items[i]
-        ..isModified = false
-        .._persistAndNotify();
-      yield _items[i];
-    }
-  }
-
-  Stream<MediaItem> deleteFiles(Iterable<int> indexes) async* {
-    // TODO: provide hook whereby caller can cancel operation.
-    final _FilteredItems filtered = _filterItems(indexes);
-    final _DeleteFilesMessage message = _DeleteFilesMessage._(
-      DatabaseBinding.instance.dbFile.absolute.path,
-      filtered.items,
-    );
-    final Stream<int> iter = Isolates.stream<_DeleteFilesMessage, int>(
-      _deleteFilesWorker,
-      message,
-      debugLabel: 'deleteFiles',
-    );
-    await for (final int filteredIndex in iter) {
-      final int index = filtered.getOriginalIndex(filteredIndex);
-      final MediaItem removed = _items.removeAt(index);
-      assert(removed.path == filtered.items[filteredIndex].path);
-      yield removed;
-      MediaBinding.instance._notifyCollectionChanged();
-    }
-  }
-
-  Stream<void> exportToFolder(String folder, Iterable<int> indexes) async* {
-    final _FilteredItems filtered = _filterItems(indexes);
-    final _ExportToFolderMessage message = _ExportToFolderMessage._(
-      folder,
-      filtered.items,
-    );
-    final Stream<DbRow> iter = Isolates.stream<_ExportToFolderMessage, DbRow>(
-      _exportToFolderWorker,
-      message,
-      debugLabel: 'exportToFolder',
-    );
-    await for (final DbRow _ in iter) {
-      yield null;
-    }
-  }
-
-  _FilteredItems _filterItems(Iterable<int> indexes) {
-    assert(indexes.length <= _items.length);
-    assert(indexes.every((int index) => index < _items.length));
-    Map<String, int> lookup = <String, int>{};
-    List<MediaItem> filtered = List<MediaItem>.empty(growable: true);
-    for (int i in indexes) {
-      filtered.add(_items[i]);
-      lookup[_items[i].path] = i;
-    }
-    return _FilteredItems(filtered, lookup);
+      controller.add(null);
+    }, onError: controller.addError, onDone: controller.close);
+    return controller.stream;
   }
 
   /// This runs in a separate isolate.
-  Stream<DbRow> _addFilesWorker(_AddFilesMessage message) async* {
-    try {
-      const FileSystem fs = LocalFileSystem();
-      sqflite.databaseFactory = sqflite.databaseFactoryFfi;
-      final sqflite.Database db = await sqflite.openDatabase(message.dbPath);
-      final ChrootFileSystem chrootFs = ChrootFileSystem(
-        fs,
-        fs.path.join(message.appSupportPath, 'media'),
-      );
-      for (String path in message.paths) {
+  static Stream<DbRow> _addFilesWorker(_AddFilesMessage message) async* {
+    const FileSystem fs = LocalFileSystem();
+    sqflite.databaseFactory = sqflite.databaseFactoryFfi;
+    final sqflite.Database db = await sqflite.openDatabase(message.dbPath);
+    final ChrootFileSystem chrootFs = ChrootFileSystem(
+      fs,
+      fs.path.join(message.appSupportPath, 'media'),
+    );
+    for (String path in message.paths) {
+      try {
         final String extension = path.split('.').last.toLowerCase();
         final Uint8List bytes = fs.file(path).readAsBytesSync();
         chrootFs.file(path).parent.createSync(recursive: true);
@@ -574,107 +748,91 @@ class MediaItems {
           final Metadata metadata = mp4.extractMetadata(chrootFs);
           yield await insertRow(metadata, MediaType.video);
         } else {
-          yield* _yieldError(UnsupportedError('Unsupported file: $path'));
+          yield* Stream<DbRow>.error(UnsupportedError('Unsupported file: $path'));
         }
+      } catch (error, stack) {
+        if (chrootFs.file(path).existsSync()) {
+          chrootFs.file(path).deleteSync();
+        }
+        yield* Stream<DbRow>.error(error, stack);
       }
-    } catch (error, stack) {
-      print('$error\n$stack');
-      yield* _yieldError(error);
     }
   }
+}
 
-  Stream<int> _writeToDiskWorker(_WriteToDiskMessage message) async* {
-    try {
-      sqflite.databaseFactory = sqflite.databaseFactoryFfi;
-      final sqflite.Database db = await sqflite.openDatabase(message.dbPath);
-      for (int i = 0; i < message.items.length; i++) {
-        final MediaItem item = message.items[i];
-        switch (item.type) {
-          case MediaType.photo:
-            final JpegFile jpeg = JpegFile(item.path);
-            bool needsWrite = false;
-            if (item.hasDateTimeOriginal) {
-              needsWrite = true;
-              jpeg.setDateTimeOriginal(item.dateTimeOriginal!);
-            }
-            if (item.hasDateTimeDigitized) {
-              needsWrite = true;
-              jpeg.setDateTimeDigitized(item.dateTimeDigitized!);
-            }
-            if (item.hasLatlng) {
-              needsWrite = true;
-              jpeg.setGpsCoordinates(GpsCoordinates.fromString(item.latlng!));
-            }
-            if (needsWrite) {
-              jpeg.write();
-            }
-          case MediaType.video:
-            final Mp4 mp4 = Mp4(item.path);
-            await mp4.writeMetadata(dateTime: item.dateTime, coordinates: item.coords);
-        }
-        item.isModified = false;
-        await item._writeToDb(db);
-        yield i;
-      }
-    } catch (error, stack) {
-      print('$error\n$stack');
-      yield* _yieldError(error);
+abstract base class MediaItemFilter {
+  const MediaItemFilter();
+
+  Iterable<MediaItem> apply(List<MediaItem> source);
+}
+
+final class PredicateMediaItemFilter extends MediaItemFilter {
+  const PredicateMediaItemFilter(this.condition);
+
+  final Predicate<MediaItem> condition;
+
+  @override
+  Iterable<MediaItem> apply(List<MediaItem> source) => source.where(condition);
+}
+
+final class IndexedMediaItemFilter extends MediaItemFilter {
+  const IndexedMediaItemFilter(this.indexes);
+
+  final Iterable<int> indexes;
+
+  @override
+  Iterable<MediaItem> apply(List<MediaItem> source) {
+    final List<MediaItem> result = <MediaItem>[];
+    for (int index in indexes) {
+      result.add(source[index]);
     }
+    return result;
+  }
+}
+
+final class FilteredMediaItems extends MediaItems {
+  FilteredMediaItems(this.filter, this.parent) : super._(<MediaItem>[]) {
+    _debugAssertChainToRoot();
+    _updateItems();
   }
 
-  Stream<int> _deleteFilesWorker(_DeleteFilesMessage message) async* {
-    try {
-      sqflite.databaseFactory = sqflite.databaseFactoryFfi;
-      final sqflite.Database db = await sqflite.openDatabase(message.dbPath);
-      const FileSystem fs = LocalFileSystem();
-      // Traverse the list backwards so that our stream of indexes will be valid
-      // even as we remove items from the list.
-      for (int i = message.items.length - 1; i >= 0; i--) {
-        final MediaItem item = message.items[i];
-        fs.file(item.path).deleteSync();
-        if (item.path != item.photoPath) {
-          fs.file(item.photoPath).deleteSync();
-        }
-        await db.delete('MEDIA', where: 'PATH = ?', whereArgs: [item.path]);
-        yield i;
+  final MediaItems parent;
+  final MediaItemFilter filter;
+
+  void _debugAssertChainToRoot() {
+    assert(() {
+      MediaItems root = parent;
+      while (root is FilteredMediaItems) {
+        root = root.parent;
       }
-    } catch (error, stack) {
-      print('$error\n$stack');
-      yield* _yieldError(error);
-    }
+      return root == MediaBinding.instance.items;
+    }());
   }
 
-  Stream<DbRow> _exportToFolderWorker(_ExportToFolderMessage message) async* {
-    try {
-      const FileSystem fs = LocalFileSystem();
-      final Directory root = fs.directory(message.folder);
-      assert(root.existsSync());
-      for (MediaItem item in message.items) {
-        final int year = item.hasDateTime ? item.dateTime!.year : 0;
-        final Directory parent = root.childDirectory(year.toString().padLeft(4, '0'));
-        if (!parent.existsSync()) {
-          parent.createSync();
-        }
-        final String path = item.path;
-        final String basename = fs.file(path).basename;
-        File target = parent.childFile(basename);
-        for (int i = 1; target.existsSync(); i++) {
-          // Resolve collision
-          target = parent.childFile('$basename ($i)');
-        }
-        // https://github.com/flutter/flutter/issues/140763
-        await fs.file(path).copy(target.path);
-        yield item._row;
-      }
-    } catch (error, stack) {
-      print('$error\n$stack');
-      yield* _yieldError(error);
-    }
+  @override
+  RootMediaItems get root {
+    _debugAssertChainToRoot();
+    return MediaBinding.instance.items;
   }
 
-  Stream<T> _yieldError<T>(dynamic error) async* {
-    throw error;
+  @override
+  List<MediaItem> get _items {
+    if (_generation != parent._generation) {
+      _updateItems();
+    }
+    return super._items;
   }
+
+  void _updateItems() {
+    super._items..clear()..addAll(filter.apply(parent._items));
+    _generation = parent._generation;
+  }
+
+  @override
+  MediaItemComparator get comparator => parent.comparator;
+
+  @override
+  set comparator(MediaItemComparator value) => parent.comparator = value;
 }
 
 class _AddFilesMessage {
@@ -711,29 +869,11 @@ mixin MediaBinding on AppBindingBase, DatabaseBinding {
   static late MediaBinding _instance;
   static MediaBinding get instance => _instance;
 
-  _MediaNotifier? _collectionNotifier;
+  // TODO: change to be keyed off ITEM_ID instead of PATH
   final Map<String, _MediaNotifier> _itemNotifiers = <String, _MediaNotifier>{};
 
-  late MediaItems _items;
-  MediaItems get items => _items;
-
-  void addCollectionListener(VoidCallback listener) {
-    _collectionNotifier ??= _MediaNotifier();
-    _collectionNotifier!.addListener(listener);
-  }
-
-  void removeCollectionListener(VoidCallback listener) {
-    assert(_collectionNotifier != null);
-    _collectionNotifier!.removeListener(listener);
-    if (!_collectionNotifier!.hasListeners) {
-      _collectionNotifier!.dispose();
-      _collectionNotifier = null;
-    }
-  }
-
-  void _notifyCollectionChanged() {
-    _collectionNotifier?.notifyListeners();
-  }
+  late RootMediaItems _items;
+  RootMediaItems get items => _items;
 
   void addItemListener(String path, VoidCallback listener) {
     final _MediaNotifier notifier = _itemNotifiers.putIfAbsent(path, () => _MediaNotifier());
@@ -760,7 +900,7 @@ mixin MediaBinding on AppBindingBase, DatabaseBinding {
   Future<void> initInstances() async {
     await super.initInstances();
     final DbResults results = await getAllMediaItems();
-    _items = MediaItems.fromDbResults(results);
+    _items = RootMediaItems.fromDbResults(results);
     _instance = this;
   }
 }

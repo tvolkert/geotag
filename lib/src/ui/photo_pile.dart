@@ -11,7 +11,7 @@ class PhotoPile extends StatefulWidget {
     required this.items,
   });
 
-  final Iterable<MediaItem> items;
+  final MediaItems items;
 
   @override
   State<PhotoPile> createState() => _PhotoPileState();
@@ -25,7 +25,7 @@ class _PhotoPileState extends State<PhotoPile> {
 
   void _initAdjustments() {
     _adjustments.clear();
-    for (MediaItem _ in widget.items) {
+    for (int i = 0; i < widget.items.length; i++) {
       _adjustments.add((_rand.nextInt(8) - 4) / 100);
     }
   }

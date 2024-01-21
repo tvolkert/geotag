@@ -1,24 +1,21 @@
 // ignore_for_file: avoid_print
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:file/file.dart';
 import 'package:file/local.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import 'src/extensions/date_time.dart';
-import 'src/extensions/iterable.dart';
 import 'src/model/app.dart';
 import 'src/model/files.dart';
 import 'src/model/gps.dart';
-import 'src/model/image.dart';
 import 'src/model/media.dart';
-import 'src/model/tasks.dart';
-import 'src/model/video.dart';
+import 'src/ui/app_bar.dart';
 import 'src/ui/date_time_editor.dart';
 import 'src/ui/photo_pile.dart';
 import 'src/ui/thumbnail_list.dart';
@@ -28,7 +25,7 @@ void main() {
   runZonedGuarded<void>(
     () async {
       await GeotagAppBinding.ensureInitialized();
-      runApp(const MyApp());
+      runApp(const Geotagger());
     },
     (Object error, StackTrace stack) {
       debugPrint('Caught unhandled error by zone error handler.');
@@ -37,8 +34,8 @@ void main() {
   );
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class Geotagger extends StatelessWidget {
+  const Geotagger({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -54,7 +51,8 @@ class MyApp extends StatelessWidget {
 }
 
 abstract class HomeController {
-  void setSelectedItems(Iterable<int> indexes);
+  MediaItems get featuredItems;
+  set featuredItems(MediaItems items);
 }
 
 class GeotagHome extends StatefulWidget {
@@ -63,57 +61,37 @@ class GeotagHome extends StatefulWidget {
   @override
   State<GeotagHome> createState() => _GeotagHomeState();
 
-  static HomeController of(BuildContext context) {
-    return context.getInheritedWidgetOfExactType<_HomeScope>()!.state;
+  static HomeController of(BuildContext context, {bool introduceDependency = false}) {
+    if (introduceDependency) {
+      return context.dependOnInheritedWidgetOfExactType<_HomeScope>()!.state;
+    } else {
+      return context.getInheritedWidgetOfExactType<_HomeScope>()!.state;
+    }
   }
 }
 
 class _GeotagHomeState extends State<GeotagHome> implements HomeController {
   late final FocusNode _focusNode;
   final VideoPlayerPlayPauseController playPauseController = VideoPlayerPlayPauseController();
-  double? _taskProgress;
-  Iterable<int> _selectedIndexes = const Iterable<int>.empty();
-
-  MediaItems get items => MediaBinding.instance.items;
+  MediaItems _featuredItems = EmptyMediaItems();
 
   @override
-  void setSelectedItems(Iterable<int> indexes) {
-    setState(() {
-      _selectedIndexes = indexes;
-    });
-  }
+  MediaItems get featuredItems => _featuredItems;
 
-  void _launchFilePicker() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: <String>[
-        ...JpegFile.allowedExtensions,
-        ...Mp4.allowedExtensions,
-      ],
-      allowMultiple: true,
-      lockParentWindow: true,
-    );
-    if (result != null) {
-      TaskBinding.instance.addTasks(result.files.length);
-      final Stream<MediaItem> added = items.addFiles(result.files.map<String>((PlatformFile file) {
-        return file.path!;
-      }));
-      await for (final MediaItem _ in added) {
-        TaskBinding.instance.onTaskCompleted();
-        if (mounted) {
-          setState(() {});
-        }
-      }
-    }
+  @override
+  set featuredItems(MediaItems items) {
+    setState(() {
+      _featuredItems = items;
+    });
   }
 
   KeyEventResult _handleKeyEvent(FocusNode focusNode, KeyEvent event) {
     KeyEventResult result = KeyEventResult.ignored;
     // TODO: handle rewind & fast-forward (https://github.com/flutter/flutter/issues/140764)
-    if (_selectedIndexes.length == 1 &&
+    if (_featuredItems.isSingle &&
         event is! KeyUpEvent &&
         event.logicalKey == LogicalKeyboardKey.space) {
-      final MediaItem item = items[_selectedIndexes.first];
+      final MediaItem item = _featuredItems.first;
       if (item.type == MediaType.video) {
         playPauseController.playPause();
         result = KeyEventResult.handled;
@@ -122,69 +100,14 @@ class _GeotagHomeState extends State<GeotagHome> implements HomeController {
     return result;
   }
 
-  Future<void> _writeEditsToDisk() async {
-    final MediaItems modified = items.whereModified;
-    assert(modified.isNotEmpty);
-    TaskBinding.instance.addTasks(modified.length);
-    await for (MediaItem _ in modified.writeFilesToDisk()) {
-      // TODO: cancel operation upon `dispose`
-      TaskBinding.instance.onTaskCompleted();
-    }
-  }
-
-  Future<void> _exportToFolder() async {
-    String? path = await FilePicker.platform.getDirectoryPath(
-      dialogTitle: 'Export to folder',
-      lockParentWindow: true,
-    );
-    if (path != null) {
-      TaskBinding.instance.addTasks(_selectedIndexes.length);
-      await for (void _ in items.exportToFolder(path, _selectedIndexes.toList())) {
-        TaskBinding.instance.onTaskCompleted();
-      }
-    }
-  }
-
-  Widget? _getLeading() {
-    if (_taskProgress == null) {
-      return null;
-    }
-    return Row(
-      children: <Widget>[
-        const CircularProgressIndicator(
-          color: Color.fromARGB(255, 73, 69, 79),
-        ),
-        Expanded(
-          child: LinearProgressIndicator(
-            value: _taskProgress,
-          ),
-        ),
-      ],
-    );
-  }
-
-  int? get selectedIndex => _selectedIndexes.singleOrNull;
-
-  MediaItem? get selectedItem => selectedIndex == null ? null : items[selectedIndex!];
-
-  Iterable<MediaItem> get selectedItems => items.filter(_selectedIndexes);
-
-  void _handleTasksChanged() {
-    setState(() {
-      _taskProgress = TaskBinding.instance.progress;
-    });
-  }
-
   @override
   void initState() {
     super.initState();
     _focusNode = FocusNode();
-    TaskBinding.instance.addTaskListener(_handleTasksChanged);
   }
 
   @override
   void dispose() {
-    TaskBinding.instance.removeTaskListener(_handleTasksChanged);
     _focusNode.dispose();
     super.dispose();
   }
@@ -194,36 +117,7 @@ class _GeotagHomeState extends State<GeotagHome> implements HomeController {
     return _HomeScope(
       state: this,
       child: Scaffold(
-        appBar: AppBar(
-          backgroundColor: Colors.black,
-          leading: _getLeading(),
-          actions: <Widget>[
-            IconButton(
-              icon: const Icon(
-                Icons.add_a_photo_outlined,
-                color: Colors.white,
-              ),
-              tooltip: 'Add photos & videos to library',
-              onPressed: _launchFilePicker,
-            ),
-            IconButton(
-              icon: Icon(
-                Icons.save,
-                color: _taskProgress == null && items.containsModified ? Colors.white : null,
-              ),
-              tooltip: 'Save all edits',
-              onPressed: _taskProgress == null && items.containsModified ? _writeEditsToDisk : null,
-            ),
-            IconButton(
-              icon: Icon(
-                Icons.drive_folder_upload,
-                color: _taskProgress == null ? Colors.white : null,
-              ),
-              tooltip: 'Export to folder',
-              onPressed: _taskProgress == null ? _exportToFolder : null,
-            ),
-          ],
-        ),
+        appBar: const GeotagAppBar(),
         body: Focus(
           focusNode: _focusNode,
           onKeyEvent: _handleKeyEvent,
@@ -231,11 +125,11 @@ class _GeotagHomeState extends State<GeotagHome> implements HomeController {
             children: <Widget>[
               Expanded(
                 child: MainArea(
-                  items: selectedItems,
+                  items: _featuredItems,
                   playPauseController: playPauseController,
                 ),
               ),
-              const Divider(height: 1),
+              const Divider(height: 1, color: Colors.black),
               const ThumbnailList(),
             ],
           ),
@@ -254,7 +148,9 @@ class _HomeScope extends InheritedWidget {
   final _GeotagHomeState state;
 
   @override
-  bool updateShouldNotify(covariant _HomeScope oldWidget) => false;
+  bool updateShouldNotify(covariant _HomeScope oldWidget) {
+    return state.featuredItems != oldWidget.state.featuredItems;
+  }
 }
 
 class MainArea extends StatelessWidget {
@@ -264,7 +160,7 @@ class MainArea extends StatelessWidget {
     required this.playPauseController,
   });
 
-  final Iterable<MediaItem> items;
+  final MediaItems items;
   final VideoPlayerPlayPauseController playPauseController;
 
   @override
@@ -296,7 +192,7 @@ class MainImage extends StatelessWidget {
     this.fs = const LocalFileSystem(),
   });
 
-  final Iterable<MediaItem> items;
+  final MediaItems items;
   final VideoPlayerPlayPauseController playPauseController;
   final FileSystem fs;
 
@@ -321,7 +217,7 @@ class MainImage extends StatelessWidget {
       }
     } else {
       result = PhotoPile(
-        items: items.toList().reversed.take(3).toList().reversed,
+        items: items.where(LastNMediaItemFilter(3)),
       );
     }
 
@@ -329,6 +225,21 @@ class MainImage extends StatelessWidget {
       color: Colors.black,
       child: result,
     );
+  }
+}
+
+final class LastNMediaItemFilter extends MediaItemFilter {
+  LastNMediaItemFilter(this.n) : assert(n >= 0);
+
+  final int n;
+
+  @override
+  Iterable<MediaItem> apply(List<MediaItem> source) {
+    List<MediaItem> result = <MediaItem>[];
+    for (int i = math.max(0, source.length - n); i < source.length; i++) {
+      result.add(source[i]);
+    }
+    return result;
   }
 }
 
@@ -378,7 +289,7 @@ class _SinglePhotoState extends State<SinglePhoto> {
 class MetadataPanel extends StatefulWidget {
   const MetadataPanel(this.items, {super.key});
 
-  final Iterable<MediaItem> items;
+  final MediaItemsView items;
 
   @override
   State<MetadataPanel> createState() => _MetadataPanelState();
@@ -443,9 +354,9 @@ class _MetadataPanelState extends State<MetadataPanel> {
         await _updateDateTime(widget.items.single, newDateTime);
       } else {
         final List<Future<void>> futures = <Future<void>>[];
-        for (final MediaItem item in widget.items) {
+        widget.items.forEach((MediaItem item) {
           futures.add(_updateDateTime(item, newDateTime));
-        }
+        });
         await Future.wait<void>(futures);
       }
       setState(() {});
@@ -494,11 +405,11 @@ class _MetadataPanelState extends State<MetadataPanel> {
         }
       } else {
         final List<Future<void>> futures = <Future<void>>[];
-        for (final MediaItem item in widget.items) {
+        widget.items.forEach((MediaItem item) {
           if (item.latlng != coords.latlng) {
             futures.add(_updateLatlng(item, coords));
           }
-        }
+        });
         await Future.wait<void>(futures);
         _updateLatlngUiElements();
       }
@@ -570,15 +481,15 @@ class _MetadataPanelState extends State<MetadataPanel> {
       dateTimeDisplay = _buildSingleDateTimeDisplay(widget.items.single.dateTime);
     } else {
       DateTime? min, max;
-      for (MediaItem item in widget.items) {
+      widget.items.forEach((MediaItem item) {
         final DateTime? dateTime = item.dateTime;
         if (dateTime != null) {
           min ??= dateTime;
           max ??= dateTime;
-          min = min.earlier(dateTime);
-          max = max.later(dateTime);
+          min = min!.earlier(dateTime);
+          max = max!.later(dateTime);
         }
-      }
+      });
       if (min == max) {
         dateTimeDisplay = _buildSingleDateTimeDisplay(min);
       } else {
@@ -591,7 +502,7 @@ class _MetadataPanelState extends State<MetadataPanel> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(minValue),
-              Text('${ehmma.format(min)} - ${hmma.format(max)}'),
+              Text('${ehmma.format(min!)} - ${hmma.format(max!)}'),
             ],
           );
         } else {
@@ -599,7 +510,7 @@ class _MetadataPanelState extends State<MetadataPanel> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('$minValue - $maxValue'),
-              Text('${ehmma.format(min)} - ${ehmma.format(max)}'),
+              Text('${ehmma.format(min!)} - ${ehmma.format(max!)}'),
             ],
           );
         }

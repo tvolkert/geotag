@@ -23,7 +23,7 @@ class JpegFile {
   Image get image => _image ??= _decode();
 
   Metadata extractMetadata() {
-    final Uint8List thumbnailBytes = _getThumbnailBytes();
+    final Uint8List thumbnailBytes = getThumbnailBytes();
     final GpsCoordinates? coordinates = getGpsCoordinates();
     final DateTime? dateTimeOriginal = getDateTimeOriginal();
     final DateTime? dateTimeDigitized = getDateTimeDigitized();
@@ -42,7 +42,7 @@ class JpegFile {
   /// [quality] values range from 1 to 100, with 1 being the lowest quality and
   /// 100 being the highest quality. The higher the quality, the larger the file
   /// size.
-  Uint8List _getThumbnailBytes({
+  Uint8List getThumbnailBytes({
     int size = 320,
     int quality = 80,
   }) {
