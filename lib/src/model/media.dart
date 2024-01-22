@@ -440,7 +440,7 @@ abstract base class MediaItems extends MediaItemsView {
     // TODO: provide hook whereby caller can cancel operation.
     final List<MediaItem> localItems = List<MediaItem>.from(_items);
     final _WriteToDiskMessage message = _WriteToDiskMessage._(
-      DatabaseBinding.instance.dbFile.absolute.path,
+      DatabaseBinding.instance.databaseFactory,
       localItems,
     );
     final Stream<int> iter = Isolates.stream<_WriteToDiskMessage, int>(
@@ -465,7 +465,7 @@ abstract base class MediaItems extends MediaItemsView {
     // TODO: provide hook whereby caller can cancel operation.
     final List<MediaItem> localItems = List<MediaItem>.from(_items);
     final _DeleteFilesMessage message = _DeleteFilesMessage._(
-      DatabaseBinding.instance.dbFile.absolute.path,
+      DatabaseBinding.instance.databaseFactory,
       localItems,
     );
     final Stream<int> iter = Isolates.stream<_DeleteFilesMessage, int>(
@@ -503,8 +503,7 @@ abstract base class MediaItems extends MediaItemsView {
   }
 
   static Stream<int> _writeToDiskWorker(_WriteToDiskMessage message) async* {
-    sqflite.databaseFactory = sqflite.databaseFactoryFfi;
-    final sqflite.Database db = await sqflite.openDatabase(message.dbPath);
+    final sqflite.Database db = await message.dbFactory();
     for (int i = 0; i < message.items.length; i++) {
       try {
         final MediaItem item = message.items[i];
@@ -541,8 +540,7 @@ abstract base class MediaItems extends MediaItemsView {
   }
 
   static Stream<int> _deleteFilesWorker(_DeleteFilesMessage message) async* {
-    sqflite.databaseFactory = sqflite.databaseFactoryFfi;
-    final sqflite.Database db = await sqflite.openDatabase(message.dbPath);
+    final sqflite.Database db = await message.dbFactory();
     const FileSystem fs = LocalFileSystem();
     // Traverse the list backwards so that our stream of indexes will be valid
     // even as we remove items from the list.
@@ -676,7 +674,7 @@ final class RootMediaItems extends MediaItems {
   Stream<void> addFiles(Iterable<String> paths) {
     final Directory appSupportDir = FilesBinding.instance.applicationSupportDirectory;
     final _AddFilesMessage message = _AddFilesMessage._(
-      DatabaseBinding.instance.dbFile.absolute.path,
+      DatabaseBinding.instance.databaseFactory,
       appSupportDir.absolute.path,
       paths,
     );
@@ -705,8 +703,7 @@ final class RootMediaItems extends MediaItems {
   /// This runs in a separate isolate.
   static Stream<DbRow> _addFilesWorker(_AddFilesMessage message) async* {
     const FileSystem fs = LocalFileSystem();
-    sqflite.databaseFactory = sqflite.databaseFactoryFfi;
-    final sqflite.Database db = await sqflite.openDatabase(message.dbPath);
+    final sqflite.Database db = await message.dbFactory();
     final ChrootFileSystem chrootFs = ChrootFileSystem(
       fs,
       fs.path.join(message.appSupportPath, 'media'),
@@ -836,24 +833,24 @@ final class FilteredMediaItems extends MediaItems {
 }
 
 class _AddFilesMessage {
-  const _AddFilesMessage._(this.dbPath, this.appSupportPath, this.paths);
+  const _AddFilesMessage._(this.dbFactory, this.appSupportPath, this.paths);
 
-  final String dbPath;
+  final DatabaseFactory dbFactory;
   final String appSupportPath;
   final Iterable<String> paths;
 }
 
 class _WriteToDiskMessage {
-  const _WriteToDiskMessage._(this.dbPath, this.items);
+  const _WriteToDiskMessage._(this.dbFactory, this.items);
 
-  final String dbPath;
+  final DatabaseFactory dbFactory;
   final List<MediaItem> items;
 }
 
 class _DeleteFilesMessage {
-  const _DeleteFilesMessage._(this.dbPath, this.items);
+  const _DeleteFilesMessage._(this.dbFactory, this.items);
 
-  final String dbPath;
+  final DatabaseFactory dbFactory;
   final List<MediaItem> items;
 }
 

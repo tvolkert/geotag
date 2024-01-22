@@ -11,6 +11,8 @@ import 'app.dart';
 typedef DbRow = Map<String, Object?>;
 typedef DbResults = List<DbRow>;
 
+typedef DatabaseFactory = Future<sqflite.Database> Function();
+
 mixin DatabaseBinding on AppBindingBase, FilesBinding {
   /// The singleton instance of this object.
   static late DatabaseBinding _instance;
@@ -32,6 +34,20 @@ mixin DatabaseBinding on AppBindingBase, FilesBinding {
     return results.isEmpty ? null : DbRow.from(results.first);
   }
 
+  DatabaseFactory get databaseFactory => _createDatabaseFactory(dbFile.absolute.path);
+
+  static DatabaseFactory _createDatabaseFactory(String path) {
+    return () {
+      sqflite.databaseFactory = sqflite.databaseFactoryFfi;
+      return sqflite.openDatabase(path);
+    };
+  }
+
+  @protected
+  Future<sqflite.Database> createDatabase() async {
+    return await sqflite.openDatabase(dbFile.absolute.path);
+  }
+
   @override
   @protected
   @mustCallSuper
@@ -47,6 +63,6 @@ mixin DatabaseBinding on AppBindingBase, FilesBinding {
     if (!dbFile.existsSync()) {
       await dbFile.writeAsBytes(photosDb.buffer.asUint8List());
     }
-    _db = await sqflite.openDatabase(dbFile.absolute.path);
+    _db = await createDatabase();
   }
 }

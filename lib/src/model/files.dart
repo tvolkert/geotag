@@ -12,17 +12,22 @@ mixin FilesBinding on AppBindingBase {
   static late FilesBinding _instance;
   static FilesBinding get instance => _instance;
 
-  final FileSystem fs = const LocalFileSystem();
-
   late final Directory _appSupportDirectory;
   Directory get applicationSupportDirectory => _appSupportDirectory;
+
+  FileSystem get fs => const LocalFileSystem();
+
+  @protected
+  Future<Directory> createAppSupportDirectory() async {
+    return fs.directory(await path_provider.getApplicationSupportDirectory());
+  }
 
   @override
   @protected
   @mustCallSuper
   Future<void> initInstances() async {
     await super.initInstances();
-    _appSupportDirectory = fs.directory(await path_provider.getApplicationSupportDirectory());
+    _appSupportDirectory = await createAppSupportDirectory();
     _instance = this;
   }
 }
