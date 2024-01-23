@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geotag/src/bindings/app.dart';
 import 'package:geotag/src/bindings/db.dart';
+import 'package:geotag/src/bindings/debug.dart';
 import 'package:geotag/src/bindings/files.dart';
 import 'package:geotag/src/bindings/media.dart';
 import 'package:geotag/src/bindings/tasks.dart';
@@ -15,6 +16,8 @@ class TestGeotagAppBinding extends AppBindingBase
     with FilesBinding, DatabaseBinding, MediaBinding, TaskBinding {
 
   final FileSystem _fs = MemoryFileSystem.test();
+
+  static TestGeotagAppBinding? _instance;
 
   static final sqflite.Database _db = FakeDatabase();
   static Future<sqflite.Database> _getFakeDatabase() async => _db;
@@ -40,8 +43,23 @@ class TestGeotagAppBinding extends AppBindingBase
   @override
   DatabaseFactory get databaseFactory => _getFakeDatabase;
 
-  static Future<void> ensureInitialized() async {
+  @override
+  Future<void> initInstances() async {
+    await super.initInstances();
+    _instance = this;
+  }
+
+  static Future<void> ensureInitialized({bool reinitialize = false}) async {
     TestWidgetsFlutterBinding.ensureInitialized();
-    await TestGeotagAppBinding().initialized;
+    if (_instance != null) {
+      if (reinitialize) {
+        assert(debugAllowBindingReinitialization);
+        await TestGeotagAppBinding().initialized;
+      } else {
+        await _instance!.initialized;
+      }
+    } else {
+      await TestGeotagAppBinding().initialized;
+    }
   }
 }

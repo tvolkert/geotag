@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import 'db.dart';
+import 'debug.dart';
 import 'files.dart';
 import 'media.dart';
 import 'tasks.dart';
@@ -28,7 +29,7 @@ abstract class AppBindingBase {
   AppBindingBase() {
     developer.Timeline.startSync('App initialization');
 
-    assert(!_debugInitialized);
+    assert(!_debugInitialized || debugAllowBindingReinitialization);
     _initialized = initInstances();
     assert(_debugInitialized);
 
@@ -55,7 +56,7 @@ abstract class AppBindingBase {
   @protected
   @mustCallSuper
   Future<void> initInstances() async {
-    assert(!_debugInitialized);
+    assert(!_debugInitialized || debugAllowBindingReinitialization);
     assert(() {
       _debugInitialized = true;
       return true;

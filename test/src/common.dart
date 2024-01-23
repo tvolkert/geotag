@@ -1,7 +1,32 @@
 import 'dart:typed_data';
 
 import 'package:file/file.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:geotag/src/bindings/debug.dart';
 import 'package:geotag/src/bindings/files.dart';
+import 'package:geotag/src/foundation/debug.dart';
+import 'package:meta/meta.dart';
+
+import 'binding.dart';
+
+/// Signature for callback to [testWidgets] and [benchmarkWidgets].
+typedef GeotagTesterCallback = Future<void> Function(
+  WidgetTester widgetTester,
+  ImageReferences images,
+);
+
+@isTest
+void testGeotag(String description, GeotagTesterCallback callback) {
+  testWidgets(description, (WidgetTester tester) async {
+    debugUseRealIsolates = false;
+    debugAllowBindingReinitialization = true;
+    addTearDown(() => debugUseRealIsolates = true);
+    addTearDown(() => debugAllowBindingReinitialization = false);
+    await TestGeotagAppBinding.ensureInitialized(reinitialize: true);
+    final ImageReferences images = loadImages();
+    await callback(tester, images);
+  });
+}
 
 /// Contains the file system paths of images that were loaded with [loadImages].
 ///
