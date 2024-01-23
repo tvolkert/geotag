@@ -121,6 +121,8 @@ class _GeotagAppBarState extends State<GeotagAppBar> {
 
   @override
   Widget build(BuildContext context) {
+    // TODO: Receive notifications of items changed and rebuild.
+    // e.g. metadata edits don't force a rebuild of `items.containsModified`
     final RootMediaItems items = MediaBinding.instance.items;
     return AppBar(
       backgroundColor: Colors.black,

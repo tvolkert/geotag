@@ -575,6 +575,7 @@ abstract base class MediaItems extends MediaItemsView {
         File target = parent.childFile(basename);
         for (int i = 1; target.existsSync(); i++) {
           // Resolve collision
+          // TODO: put the parents before the file extension
           target = parent.childFile('$basename ($i)');
         }
         // https://github.com/flutter/flutter/issues/140763
