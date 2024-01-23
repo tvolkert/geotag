@@ -5,10 +5,11 @@ import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../bindings/media.dart';
+import '../bindings/tasks.dart';
 import '../extensions/stream.dart';
 import '../model/image.dart';
 import '../model/media.dart';
-import '../model/tasks.dart';
 import '../model/video.dart';
 import 'home.dart';
 

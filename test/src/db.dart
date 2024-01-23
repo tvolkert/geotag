@@ -1,4 +1,4 @@
-import 'package:geotag/src/model/db.dart';
+import 'package:geotag/src/bindings/db.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart' as sqflite;
 
 typedef DbTables = Map<String, DbResults>;

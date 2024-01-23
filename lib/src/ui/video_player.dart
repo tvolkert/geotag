@@ -7,8 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart' as vp;
 
+import '../bindings/files.dart';
 import '../extensions/duration.dart';
-import '../model/files.dart';
 import '../model/media.dart';
 
 class VideoPlaySymbol extends StatelessWidget {

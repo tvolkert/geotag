@@ -3,10 +3,10 @@ import 'dart:async';
 import 'package:file/file.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:geotag/src/model/files.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart' as sqflite;
 
 import 'app.dart';
+import 'files.dart';
 
 typedef DbRow = Map<String, Object?>;
 typedef DbResults = List<DbRow>;

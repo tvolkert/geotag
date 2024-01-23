@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:file/file.dart';
-import 'package:geotag/src/model/files.dart';
+import 'package:geotag/src/bindings/files.dart';
 
 /// Contains the file system paths of images that were loaded with [loadImages].
 ///

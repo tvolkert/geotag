@@ -2,7 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
 
-import '../model/files.dart';
+import '../bindings/files.dart';
 import '../model/media.dart';
 
 class PhotoPile extends StatefulWidget {

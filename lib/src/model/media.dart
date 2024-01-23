@@ -12,12 +12,12 @@ import 'package:geotag/src/extensions/iterable.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart' as sqflite;
 
 import '../foundation/base.dart';
-import 'app.dart';
-import 'db.dart';
+import '../foundation/isolates.dart';
+import '../bindings/db.dart';
+import '../bindings/files.dart';
+import '../bindings/media.dart';
 import 'gps.dart';
-import 'files.dart';
 import 'image.dart';
-import 'isolates.dart';
 import 'metadata.dart';
 import 'video.dart';
 
@@ -272,7 +272,7 @@ class MediaItem {
 
   void _persistAndNotify() {
     _row.addAll(_unsavedRow);
-    MediaBinding.instance._notifyPhotoChanged(path);
+    MediaBinding.instance.notifyItemChanged(path);
   }
 
   @override
@@ -613,14 +613,14 @@ final class RootMediaItems extends MediaItems {
     }),
   );
 
-  _MediaNotifier? _notifier;
+  MediaNotifier? _notifier;
   MediaItemComparator _comparator;
 
   @override
   RootMediaItems get root => this;
 
   void addListener(VoidCallback listener) {
-    _notifier ??= _MediaNotifier();
+    _notifier ??= MediaNotifier();
     _notifier!.addListener(listener);
   }
 
@@ -865,48 +865,7 @@ class _ExportToFolderMessage {
   final List<MediaItem> items;
 }
 
-mixin MediaBinding on AppBindingBase, DatabaseBinding {
-  /// The singleton instance of this object.
-  static late MediaBinding _instance;
-  static MediaBinding get instance => _instance;
-
-  // TODO: change to be keyed off ITEM_ID instead of PATH
-  final Map<String, _MediaNotifier> _itemNotifiers = <String, _MediaNotifier>{};
-
-  late RootMediaItems _items;
-  RootMediaItems get items => _items;
-
-  void addItemListener(String path, VoidCallback listener) {
-    final _MediaNotifier notifier = _itemNotifiers.putIfAbsent(path, () => _MediaNotifier());
-    notifier.addListener(listener);
-  }
-
-  void removeItemListener(String path, VoidCallback listener) {
-    final _MediaNotifier? notifier = _itemNotifiers[path];
-    assert(notifier != null);
-    notifier!.removeListener(listener);
-    if (!notifier.hasListeners) {
-      notifier.dispose();
-      _itemNotifiers.remove(path);
-    }
-  }
-
-  void _notifyPhotoChanged(String path) {
-    _itemNotifiers[path]?.notifyListeners();
-  }
-
-  @override
-  @protected
-  @mustCallSuper
-  Future<void> initInstances() async {
-    await super.initInstances();
-    final DbResults results = await getAllMediaItems();
-    _items = RootMediaItems.fromDbResults(results);
-    _instance = this;
-  }
-}
-
-class _MediaNotifier extends Object with ChangeNotifier {
+class MediaNotifier extends Object with ChangeNotifier {
   @override
   void notifyListeners() => super.notifyListeners();
 

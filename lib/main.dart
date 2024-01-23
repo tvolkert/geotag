@@ -4,7 +4,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'src/model/app.dart';
+import 'src/bindings/app.dart';
 import 'src/ui/home.dart';
 
 void main() {

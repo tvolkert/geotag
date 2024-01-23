@@ -1,7 +1,7 @@
 import 'package:file/file.dart';
 import 'package:flutter/material.dart';
 
-import '../model/files.dart';
+import '../bindings/files.dart';
 
 class SinglePhoto extends StatefulWidget {
   const SinglePhoto({

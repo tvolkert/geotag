@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:geotag/src/model/debug.dart';
-import 'package:geotag/src/model/media.dart';
+import 'package:geotag/src/bindings/media.dart';
+import 'package:geotag/src/foundation/debug.dart';
 import 'package:geotag/src/ui/thumbnail_list.dart';
 
 import '../src/binding.dart';

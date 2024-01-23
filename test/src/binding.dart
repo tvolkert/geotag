@@ -2,11 +2,11 @@ import 'package:file/file.dart';
 import 'package:file/memory.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:geotag/src/model/app.dart';
-import 'package:geotag/src/model/db.dart';
-import 'package:geotag/src/model/files.dart';
-import 'package:geotag/src/model/media.dart';
-import 'package:geotag/src/model/tasks.dart';
+import 'package:geotag/src/bindings/app.dart';
+import 'package:geotag/src/bindings/db.dart';
+import 'package:geotag/src/bindings/files.dart';
+import 'package:geotag/src/bindings/media.dart';
+import 'package:geotag/src/bindings/tasks.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart' as sqflite;
 
 import 'db.dart';
