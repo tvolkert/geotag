@@ -4,7 +4,6 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:file/file.dart';
-import 'package:file/local.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -189,12 +188,10 @@ class MainImage extends StatelessWidget {
     super.key,
     required this.items,
     required this.playPauseController,
-    this.fs = const LocalFileSystem(),
   });
 
   final MediaItems items;
   final VideoPlayerPlayPauseController playPauseController;
-  final FileSystem fs;
 
   @override
   Widget build(BuildContext context) {
@@ -212,7 +209,6 @@ class MainImage extends StatelessWidget {
           return VideoPlayer(
             item: item,
             playPauseController: playPauseController,
-            fs: fs,
           );
       }
     } else {

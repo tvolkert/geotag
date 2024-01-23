@@ -6,7 +6,6 @@ import 'package:chicago/chicago.dart' as chicago show binarySearch;
 import 'package:collection/collection.dart';
 import 'package:file/chroot.dart';
 import 'package:file/file.dart';
-import 'package:file/local.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:geotag/src/extensions/iterable.dart';
@@ -441,6 +440,7 @@ abstract base class MediaItems extends MediaItemsView {
     final List<MediaItem> localItems = List<MediaItem>.from(_items);
     final _WriteToDiskMessage message = _WriteToDiskMessage._(
       DatabaseBinding.instance.databaseFactory,
+      FilesBinding.instance.fs,
       localItems,
     );
     final Stream<int> iter = Isolates.stream<_WriteToDiskMessage, int>(
@@ -466,6 +466,7 @@ abstract base class MediaItems extends MediaItemsView {
     final List<MediaItem> localItems = List<MediaItem>.from(_items);
     final _DeleteFilesMessage message = _DeleteFilesMessage._(
       DatabaseBinding.instance.databaseFactory,
+      FilesBinding.instance.fs,
       localItems,
     );
     final Stream<int> iter = Isolates.stream<_DeleteFilesMessage, int>(
@@ -487,6 +488,7 @@ abstract base class MediaItems extends MediaItemsView {
 
   Stream<void> exportToFolder(String folder) {
     final _ExportToFolderMessage message = _ExportToFolderMessage._(
+      FilesBinding.instance.fs,
       folder,
       List<MediaItem>.from(_items),
     );
@@ -509,7 +511,7 @@ abstract base class MediaItems extends MediaItemsView {
         final MediaItem item = message.items[i];
         switch (item.type) {
           case MediaType.photo:
-            final JpegFile jpeg = JpegFile(item.path);
+            final JpegFile jpeg = JpegFile(item.path, message.fs);
             bool needsWrite = false;
             if (item.hasDateTimeOriginal) {
               needsWrite = true;
@@ -527,7 +529,7 @@ abstract base class MediaItems extends MediaItemsView {
               jpeg.write();
             }
           case MediaType.video:
-            final Mp4 mp4 = Mp4(item.path);
+            final Mp4 mp4 = Mp4(item.path, message.fs);
             await mp4.writeMetadata(dateTime: item.dateTime, coordinates: item.coords);
         }
         item.isModified = false;
@@ -541,15 +543,14 @@ abstract base class MediaItems extends MediaItemsView {
 
   static Stream<int> _deleteFilesWorker(_DeleteFilesMessage message) async* {
     final sqflite.Database db = await message.dbFactory();
-    const FileSystem fs = LocalFileSystem();
     // Traverse the list backwards so that our stream of indexes will be valid
     // even as we remove items from the list.
     for (int i = message.items.length - 1; i >= 0; i--) {
       try {
         final MediaItem item = message.items[i];
-        fs.file(item.path).deleteSync();
+        message.fs.file(item.path).deleteSync();
         if (item.path != item.photoPath) {
-          fs.file(item.photoPath).deleteSync();
+          message.fs.file(item.photoPath).deleteSync();
         }
         await db.delete('MEDIA', where: 'PATH = ?', whereArgs: [item.path]);
         yield i;
@@ -560,8 +561,7 @@ abstract base class MediaItems extends MediaItemsView {
   }
 
   static Stream<DbRow> _exportToFolderWorker(_ExportToFolderMessage message) async* {
-    const FileSystem fs = LocalFileSystem();
-    final Directory root = fs.directory(message.folder);
+    final Directory root = message.fs.directory(message.folder);
     assert(root.existsSync());
     for (MediaItem item in message.items) {
       try {
@@ -571,14 +571,14 @@ abstract base class MediaItems extends MediaItemsView {
           parent.createSync();
         }
         final String path = item.path;
-        final String basename = fs.file(path).basename;
+        final String basename = message.fs.file(path).basename;
         File target = parent.childFile(basename);
         for (int i = 1; target.existsSync(); i++) {
           // Resolve collision
           target = parent.childFile('$basename ($i)');
         }
         // https://github.com/flutter/flutter/issues/140763
-        await fs.file(path).copy(target.path);
+        await message.fs.file(path).copy(target.path);
         yield item._row;
       } catch (error, stack) {
         yield* Stream<DbRow>.error(error, stack);
@@ -675,6 +675,7 @@ final class RootMediaItems extends MediaItems {
     final Directory appSupportDir = FilesBinding.instance.applicationSupportDirectory;
     final _AddFilesMessage message = _AddFilesMessage._(
       DatabaseBinding.instance.databaseFactory,
+      FilesBinding.instance.fs,
       appSupportDir.absolute.path,
       paths,
     );
@@ -702,22 +703,21 @@ final class RootMediaItems extends MediaItems {
 
   /// This runs in a separate isolate.
   static Stream<DbRow> _addFilesWorker(_AddFilesMessage message) async* {
-    const FileSystem fs = LocalFileSystem();
     final sqflite.Database db = await message.dbFactory();
     final ChrootFileSystem chrootFs = ChrootFileSystem(
-      fs,
-      fs.path.join(message.appSupportPath, 'media'),
+      message.fs,
+      message.fs.path.join(message.appSupportPath, 'media'),
     );
     for (String path in message.paths) {
       try {
         final String extension = path.split('.').last.toLowerCase();
-        final Uint8List bytes = fs.file(path).readAsBytesSync();
+        final Uint8List bytes = message.fs.file(path).readAsBytesSync();
         chrootFs.file(path).parent.createSync(recursive: true);
         chrootFs.file(path).writeAsBytesSync(bytes);
         final String chrootPath = '${chrootFs.root}$path';
-        assert(fs.file(chrootPath).existsSync());
+        assert(message.fs.file(chrootPath).existsSync());
         assert(const ListEquality<int>().equals(
-          fs.file(path).readAsBytesSync(),
+          message.fs.file(path).readAsBytesSync(),
           chrootFs.file(path).readAsBytesSync(),
         ));
 
@@ -725,7 +725,7 @@ final class RootMediaItems extends MediaItems {
           MediaItem item = MediaItem._empty()
             ..type = type
             ..path = chrootPath
-            ..photoPath = '${chrootFs.root}${metadata.photoPath}'
+            ..photoPath = metadata.photoPath
             ..thumbnail = metadata.thumbnail
             ..latlng = metadata.coordinates?.latlng
             ..dateTimeOriginal = metadata.dateTimeOriginal
@@ -737,12 +737,12 @@ final class RootMediaItems extends MediaItems {
         }
 
         if (JpegFile.allowedExtensions.contains(extension)) {
-          final JpegFile jpeg = JpegFile(path);
+          final JpegFile jpeg = JpegFile(chrootPath, message.fs);
           final Metadata metadata = jpeg.extractMetadata();
           yield await insertRow(metadata, MediaType.photo);
         } else if (Mp4.allowedExtensions.contains(extension)) {
-          final Mp4 mp4 = Mp4(path);
-          final Metadata metadata = mp4.extractMetadata(chrootFs);
+          final Mp4 mp4 = Mp4(chrootPath, message.fs);
+          final Metadata metadata = mp4.extractMetadata();
           yield await insertRow(metadata, MediaType.video);
         } else {
           yield* Stream<DbRow>.error(UnsupportedError('Unsupported file: $path'));
@@ -833,30 +833,34 @@ final class FilteredMediaItems extends MediaItems {
 }
 
 class _AddFilesMessage {
-  const _AddFilesMessage._(this.dbFactory, this.appSupportPath, this.paths);
+  const _AddFilesMessage._(this.dbFactory, this.fs, this.appSupportPath, this.paths);
 
   final DatabaseFactory dbFactory;
+  final FileSystem fs;
   final String appSupportPath;
   final Iterable<String> paths;
 }
 
 class _WriteToDiskMessage {
-  const _WriteToDiskMessage._(this.dbFactory, this.items);
+  const _WriteToDiskMessage._(this.dbFactory, this.fs, this.items);
 
   final DatabaseFactory dbFactory;
+  final FileSystem fs;
   final List<MediaItem> items;
 }
 
 class _DeleteFilesMessage {
-  const _DeleteFilesMessage._(this.dbFactory, this.items);
+  const _DeleteFilesMessage._(this.dbFactory, this.fs, this.items);
 
   final DatabaseFactory dbFactory;
+  final FileSystem fs;
   final List<MediaItem> items;
 }
 
 class _ExportToFolderMessage {
-  const _ExportToFolderMessage._(this.folder, this.items);
+  const _ExportToFolderMessage._(this.fs, this.folder, this.items);
 
+  final FileSystem fs;
   final String folder;
   final List<MediaItem> items;
 }

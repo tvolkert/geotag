@@ -13,7 +13,7 @@ extension IntInterableExtenions on Iterable<int> {
         result.add(Span(i, i));
       } else {
         assert(result.isNotEmpty);
-        Span span = result.last;
+        final Span span = result.last;
         result[result.length - 1] = Span(span.start, i);
       }
       previous = i;

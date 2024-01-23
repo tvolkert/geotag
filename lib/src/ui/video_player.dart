@@ -2,13 +2,13 @@ import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:file/file.dart';
-import 'package:file/local.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart' as vp;
 
 import '../extensions/duration.dart';
+import '../model/files.dart';
 import '../model/media.dart';
 
 class VideoPlaySymbol extends StatelessWidget {
@@ -52,12 +52,10 @@ class VideoPlayer extends StatefulWidget {
     super.key,
     required this.item,
     required this.playPauseController,
-    this.fs = const LocalFileSystem(),
   }) : assert(item.type == MediaType.video);
 
   final MediaItem item;
   final VideoPlayerPlayPauseController playPauseController;
-  final FileSystem fs;
 
   @override
   State<VideoPlayer> createState() => _VideoPlayerState();
@@ -78,8 +76,9 @@ class _VideoPlayerState extends State<VideoPlayer> {
   }
 
   void _initializeVideoController() {
+    final FileSystem fs = FilesBinding.instance.fs;
     _isControllerInitialized = false;
-    _controller = vp.VideoPlayerController.file(widget.fs.file(widget.item.path));
+    _controller = vp.VideoPlayerController.file(fs.file(widget.item.path));
     _controller.setLooping(true);
     _controller.initialize().then((void _) {
       setState(() {
@@ -120,7 +119,7 @@ class _VideoPlayerState extends State<VideoPlayer> {
 
   @override
   Widget build(BuildContext context) {
-    Widget result = Image.file(widget.fs.file(widget.item.photoPath));
+    Widget result = Image.file(FilesBinding.instance.fs.file(widget.item.photoPath));
     if (_isControllerInitialized) {
       result = Center(
         child: AspectRatio(

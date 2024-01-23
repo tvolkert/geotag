@@ -1,7 +1,6 @@
 // ignore_for_file: avoid_print
 
-import 'dart:io' as io;
-
+import 'package:file/file.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:image/image.dart';
@@ -12,9 +11,13 @@ import 'gps.dart';
 import 'metadata.dart';
 
 class JpegFile {
-  JpegFile(this.path) : assert(allowedExtensions.contains(path.toLowerCase().split('.').last));
+  /// The file system specified by [fs] will be used to resolve the file
+  /// located at [path].
+  JpegFile(this.path, this.fs)
+      : assert(allowedExtensions.contains(path.toLowerCase().split('.').last));
 
   final String path;
+  final FileSystem fs;
   Image? _image;
 
   static Set<String> allowedExtensions = <String>{'jpg', 'jpeg'};
@@ -59,8 +62,8 @@ class JpegFile {
 
   Image _decode() {
     // Read the image file
-    io.File file = io.File(path);
-    Uint8List bytes = file.readAsBytesSync();
+    final File file = fs.file(path);
+    final Uint8List bytes = file.readAsBytesSync();
     final Image? image = decodeJpg(bytes);
     if (image == null) {
       throw 'Error: Unable to decode image: $path';
@@ -70,7 +73,7 @@ class JpegFile {
 
   void write() {
     try {
-      final io.File file = io.File(path);
+      final File file = fs.file(path);
       file.writeAsBytesSync(encodeJpg(image));
     } on ImageException catch (error) {
       print('ERROR: $error');

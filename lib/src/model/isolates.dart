@@ -3,14 +3,40 @@ import 'dart:isolate';
 
 import 'package:flutter/foundation.dart';
 
+import 'debug.dart';
+
+/// Signature of a worker function that returns a [Stream].
+///
+/// This signature is used in [Isolates.stream].
 typedef StreamCallback<M, R> = Stream<R> Function(M message);
 
-class Isolates {
+final class Isolates {
+  Isolates._();
+
+  /// Runs the given [worker] function in a separate isolate.
+  ///
+  /// The worker function will be passed the specified [message].
+  ///
+  /// If specified, [debugName] will identify the spawned [Isolate] in
+  /// debuggers and logging. Defaults to 'stream'.
+  ///
+  /// When running in debug mode, [debugUseRealIsolates] controls whether this
+  /// method actually spawns an isolate or runs the worker function
+  /// synchronously.
   static Stream<R> stream<M, R>(StreamCallback<M, R> worker, M message, {String? debugLabel}) {
-    debugLabel ??= kReleaseMode ? 'compute' : worker.toString();
-    return _stream(() {
+    debugLabel ??= kReleaseMode ? 'stream' : worker.toString();
+    bool useIsolates = true;
+    assert(() {
+      useIsolates = debugUseRealIsolates;
+      return true;
+    }());
+    if (useIsolates) {
+      return _stream(() {
+        return worker(message);
+      }, debugName: debugLabel);
+    } else {
       return worker(message);
-    }, debugName: debugLabel);
+    }
   }
 
   static String? get currentName => Isolate.current.debugName;

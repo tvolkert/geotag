@@ -11,13 +11,14 @@ import 'gps.dart';
 import 'metadata.dart';
 
 class Mp4 {
-  Mp4(this.path) : assert(allowedExtensions.contains(path.toLowerCase().split('.').last));
+  Mp4(this.path, this.fs) : assert(allowedExtensions.contains(path.toLowerCase().split('.').last));
 
   final String path;
+  final FileSystem fs;
 
   static Set<String> allowedExtensions = <String>{'m4v', 'mp4', 'mov'};
 
-  Metadata extractMetadata(FileSystem fs) {
+  Metadata extractMetadata() {
     final Uint8List thumbnailBytes = getFrameBytes();
     final io.ProcessResult ffprobe = io.Process.runSync(
       '/opt/homebrew/bin/ffprobe',
@@ -49,14 +50,14 @@ class Mp4 {
 
     return Metadata(
       thumbnail: thumbnailBytes,
-      photoPath: _extractAndWriteFrame(fs),
+      photoPath: _extractAndWriteFrame(),
       dateTimeOriginal: dateTime,
       dateTimeDigitized: dateTime,
       coordinates: coordinates,
     );
   }
 
-  String _extractAndWriteFrame(FileSystem fs) {
+  String _extractAndWriteFrame() {
     final String extractedPath = '$path.jpg';
     final Uint8List bytes = getFrameBytes(size: 1024, quality: 3);
     fs.file(extractedPath).writeAsBytesSync(bytes);
@@ -73,9 +74,9 @@ class Mp4 {
     int size = 320,
     int quality = 6,
   }) {
-    final io.Directory tmpDir = io.Directory.systemTemp.createTempSync('geotag_');
+    final Directory tmpDir = fs.systemTempDirectory.createTempSync('geotag_');
     try {
-      final io.File tmpFile = io.File('${tmpDir.path}/thumbnail.jpg');
+      final File tmpFile = tmpDir.childFile('thumbnail.jpg');
       final io.ProcessResult createThumbnail = io.Process.runSync(
         '/opt/homebrew/bin/ffmpeg',
         <String>[
@@ -98,11 +99,14 @@ class Mp4 {
     }
   }
 
-  Future<bool> writeMetadata({DateTime? dateTime, GpsCoordinates? coordinates}) async {
+  Future<bool> writeMetadata({
+    DateTime? dateTime,
+    GpsCoordinates? coordinates,
+  }) async {
     assert(dateTime != null || coordinates != null);
-    final io.Directory tmpDir = io.Directory.systemTemp.createTempSync('geotag_');
+    final Directory tmpDir = fs.systemTempDirectory.createTempSync('geotag_');
     try {
-      final io.File metaFile = io.File('${tmpDir.path}/metadata.meta');
+      final File metaFile = tmpDir.childFile('metadata.meta');
       final io.IOSink sink = metaFile.openWrite();
       try {
         sink.writeln(';FFMETADATA1');
@@ -119,7 +123,7 @@ class Mp4 {
       }
 
       // First, try to add the metadata without having to re-encode the file.
-      final io.File outputFile = io.File('${tmpDir.path}/output.mp4');
+      final File outputFile = tmpDir.childFile('output.mp4');
       io.ProcessResult addMetadata = io.Process.runSync(
         '/opt/homebrew/bin/ffmpeg',
         <String>[
