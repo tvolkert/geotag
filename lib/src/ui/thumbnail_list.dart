@@ -11,7 +11,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
-import '../../main.dart';
 import '../extensions/iterable.dart';
 import '../extensions/stream.dart';
 import '../foundation/base.dart';
@@ -19,6 +18,7 @@ import '../foundation/reentrant_detector.dart';
 import '../model/media.dart';
 import '../model/tasks.dart';
 import 'confirm_delete_files.dart';
+import 'home.dart';
 import 'video_player.dart';
 
 class ThumbnailList extends StatefulWidget {
