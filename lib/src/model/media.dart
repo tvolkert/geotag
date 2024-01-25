@@ -221,6 +221,18 @@ class MediaItem {
   ///    is created.
   GpsCoordinates? get coords => hasLatlng ? GpsCoordinates.fromString(latlng!) : null;
 
+  /// Whether this media item has an event attached to it.
+  bool get hasEvent => _row['EVENT'] != null;
+
+  /// The event associated with this media item, if any.
+  ///
+  /// Changes to this value will not be visible (and listeners will not be
+  /// notified) until [commit] is called.
+  String? get event => _row['EVENT'] as String?;
+  set event(String? value) {
+    _unsavedRow['EVENT'] = value;
+  }
+
   /// Whether edits have been made to this media item's metadata but not yet
   /// written to the media item's file.
   ///
@@ -262,6 +274,7 @@ class MediaItem {
         'LATLNG': _unsavedRow['LATLNG'],
         'DATETIME_ORIGINAL': _unsavedRow['DATETIME_ORIGINAL'],
         'DATETIME_DIGITIZED': _unsavedRow['DATETIME_DIGITIZED'],
+        'EVENT': _unsavedRow['EVENT'],
         'MODIFIED': _unsavedRow['MODIFIED'],
         'DATETIME_LAST_MODIFIED': _unsavedRow['DATETIME_LAST_MODIFIED'],
       },
@@ -566,9 +579,11 @@ abstract base class MediaItems extends MediaItemsView {
     for (MediaItem item in message.items) {
       try {
         final int year = item.hasDateTime ? item.dateTime!.year : 0;
-        final Directory parent = root.childDirectory(year.toString().padLeft(4, '0'));
+        final Directory parent = root
+          .childDirectory(year.toString().padLeft(4, '0'))
+          .childDirectory(item.event ?? 'No Event');
         if (!parent.existsSync()) {
-          parent.createSync();
+          parent.createSync(recursive: true);
         }
         final String path = item.path;
         final String basename = message.fs.file(path).basename;

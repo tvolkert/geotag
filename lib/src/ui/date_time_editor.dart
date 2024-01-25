@@ -5,6 +5,12 @@ import 'package:intl/intl.dart';
 /// or video.
 ///
 /// This widget is meant to be shown via the [show] method.
+// TODO: handle left/right keys to navigate
+// TODO: Add seconds
+// TODO: handle enter key to submit
+// TODO: zero-pad time values
+// TODO: render noon and midnight as "12", not "0" hours
+// TODO: handle input of "12" PM as noon, not midnight (by adding 12)
 class DateTimeEditorDialog extends StatefulWidget {
   const DateTimeEditorDialog({
     super.key,

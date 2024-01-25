@@ -39,14 +39,18 @@ class _ThumbnailListState extends State<ThumbnailList> {
   MediaItem? _selectedItem;
   bool _showOnlyMissingDate = false;
   bool _showOnlyMissingGeotag = false;
+  bool _showOnlyMissingEvent = false;
 
   static const double itemExtent = 175;
   static const MediaItemFilter _filterByDate = PredicateMediaItemFilter(_itemIsMissingDate);
   static const MediaItemFilter _filterByGeotag = PredicateMediaItemFilter(_itemIsMissingGeotag);
+  static const MediaItemFilter _filterByEvent = PredicateMediaItemFilter(_itemIsMissingEvent);
 
   static bool _itemIsMissingDate(MediaItem item) => !item.hasDateTime;
 
   static bool _itemIsMissingGeotag(MediaItem item) => !item.hasLatlng;
+
+  static bool _itemIsMissingEvent(MediaItem item) => !item.hasEvent;
 
   void _updateItems() {
     MediaItems items = MediaBinding.instance.items;
@@ -55,6 +59,9 @@ class _ThumbnailListState extends State<ThumbnailList> {
     }
     if (_showOnlyMissingGeotag) {
       items = items.where(_filterByGeotag);
+    }
+    if (_showOnlyMissingEvent) {
+      items = items.where(_filterByEvent);
     }
 
     List<int> newSelectedItems = <int>[];
@@ -110,6 +117,13 @@ class _ThumbnailListState extends State<ThumbnailList> {
   void _handleFilterByGeotag() {
     setState(() {
       _showOnlyMissingGeotag = !_showOnlyMissingGeotag;
+      _updateItems();
+    });
+  }
+
+  void _handleFilterByEvent() {
+    setState(() {
+      _showOnlyMissingEvent = !_showOnlyMissingEvent;
       _updateItems();
     });
   }
@@ -303,10 +317,16 @@ class _ThumbnailListState extends State<ThumbnailList> {
                         onPressed: _handleFilterByDate,
                       ),
                       _ToggleButton(
-                        icon: Icons.onetwothree,
+                        icon: Icons.location_off,
                         tooltipMessage: 'Show only missing geotag',
                         isSelected: () => _showOnlyMissingGeotag,
                         onPressed: _handleFilterByGeotag,
+                      ),
+                      _ToggleButton(
+                        icon: Icons.local_activity,
+                        tooltipMessage: 'Show only missing event',
+                        isSelected: () => _showOnlyMissingEvent,
+                        onPressed: _handleFilterByEvent,
                       ),
                     ],
                   ),

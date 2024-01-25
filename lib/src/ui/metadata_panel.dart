@@ -19,15 +19,33 @@ class MetadataPanel extends StatefulWidget {
 }
 
 class _MetadataPanelState extends State<MetadataPanel> {
+  bool _isEditingEvent = false;
   bool _isEditingLatlng = false;
+  late TextEditingController eventController;
   late TextEditingController latlngController;
   late FocusNode dateTimeFocusNode;
+  late FocusNode eventFocusNode;
   late FocusNode latlngFocusNode;
   late final WebViewController webViewController;
 
   static final DateFormat mmmmdyyyy = DateFormat('MMM d, yyyy');
   static final DateFormat ehmma = DateFormat('E, h:mm a');
   static final DateFormat hmma = DateFormat('h:mm a');
+
+  Future<void> _updateEventUiElement() async {
+    if (widget.items.isEmpty) {
+      eventController.text = '';
+    } else if (widget.items.isSingle) {
+      final MediaItem item = widget.items.single;
+      eventController.text = item.event ?? '';
+    } else {
+      final String? sharedEvent = widget.items
+        .map<String?>((MediaItem item) => item.event)
+        .reduce((String? value, String? element) => value == element ? value : null);
+      eventController.text = sharedEvent ?? '';
+    }
+    setState(() {});
+  }
 
   Future<void> _updateLatlngUiElements({bool firstRun = false}) async {
     if (widget.items.isEmpty) {
@@ -86,13 +104,28 @@ class _MetadataPanelState extends State<MetadataPanel> {
     }
   }
 
+  void _handleEventSubmitted(String value) {
+    assert(value == eventController.text);
+    setIsEditingEvent(false);
+  }
+
   void _handleLatlngSubmitted(String value) {
     assert(value == latlngController.text);
     setIsEditingLatlng(false);
   }
 
   void _handleFocusChanged() {
+    setIsEditingEvent(FocusManager.instance.primaryFocus == eventFocusNode);
     setIsEditingLatlng(FocusManager.instance.primaryFocus == latlngFocusNode);
+  }
+
+  void setIsEditingEvent(bool value) {
+    if (value != _isEditingEvent) {
+      _isEditingEvent = value;
+      if (!value) {
+        _saveEventEdits();
+      }
+    }
   }
 
   void setIsEditingLatlng(bool value) {
@@ -104,6 +137,15 @@ class _MetadataPanelState extends State<MetadataPanel> {
     }
   }
 
+  Future<void> _updateEvent(MediaItem item, String? event) async {
+    item
+        ..event = event
+        ..isModified = true
+        ..lastModified = DateTime.now()
+        ;
+    await item.commit();
+  }
+
   Future<void> _updateLatlng(MediaItem item, GpsCoordinates coords) async {
     item
         ..latlng = coords.latlng
@@ -111,6 +153,33 @@ class _MetadataPanelState extends State<MetadataPanel> {
         ..lastModified = DateTime.now()
         ;
     await item.commit();
+  }
+
+  Future<void> _saveEventEdits() async {
+    if (widget.items.isEmpty) {
+      return;
+    }
+
+    String? event = eventController.text.trim();
+    if (event.isEmpty) {
+      event = null;
+    }
+    if (widget.items.isSingle) {
+      final MediaItem item = widget.items.single;
+      if (item.event != event) {
+        await _updateEvent(item, event);
+        _updateEventUiElement();
+      }
+    } else {
+      final List<Future<void>> futures = <Future<void>>[];
+      widget.items.forEach((MediaItem item) {
+        if (item.event != event) {
+          futures.add(_updateEvent(item, event));
+        }
+      });
+      await Future.wait<void>(futures);
+      _updateEventUiElement();
+    }
   }
 
   Future<void> _saveLatlngEdits() async {
@@ -157,10 +226,13 @@ class _MetadataPanelState extends State<MetadataPanel> {
   @override
   void initState() {
     super.initState();
+    eventController = TextEditingController();
     latlngController = TextEditingController();
     dateTimeFocusNode = FocusNode();
+    eventFocusNode = FocusNode();
     latlngFocusNode = FocusNode();
     FocusManager.instance.addListener(_handleFocusChanged);
+    _updateEventUiElement();
     _updateLatlngUiElements(firstRun: true);
     webViewController = WebViewController()
       ..clearCache()
@@ -181,6 +253,7 @@ class _MetadataPanelState extends State<MetadataPanel> {
   @override
   void didUpdateWidget(covariant MetadataPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _updateEventUiElement();
     _updateLatlngUiElements(firstRun: false);
   }
 
@@ -188,8 +261,10 @@ class _MetadataPanelState extends State<MetadataPanel> {
   void dispose() {
     FocusManager.instance.removeListener(_handleFocusChanged);
     latlngFocusNode.dispose();
+    eventFocusNode.dispose();
     dateTimeFocusNode.dispose();
     latlngController.dispose();
+    eventController.dispose();
     super.dispose();
   }
 
@@ -252,36 +327,29 @@ class _MetadataPanelState extends State<MetadataPanel> {
             ),
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.all(20),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              const Icon(Icons.calendar_today_rounded),
-              const SizedBox(width: 30),
-              dateTimeDisplay,
-              Expanded(child: Container()),
-              IconButton(
-                icon: const Icon(Icons.edit),
-                onPressed: _handleEditDateTime,
-              ),
-            ],
-          ),
+        MetadataField(
+          icon: Icons.calendar_today_rounded,
+          onEdit: _handleEditDateTime,
+          child: dateTimeDisplay,
         ),
-        Padding(
-          padding: const EdgeInsets.all(20),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              const Icon(Icons.photo_outlined),
-              const SizedBox(width: 30),
-              widget.items.isSingle
-                  ? SelectableText(widget.items.single.path.split('/').last)
-                  : Text(
-                    '${widget.items.length} items',
-                    style: const TextStyle(fontStyle: FontStyle.italic),
-                  ),
-            ],
+        MetadataField(
+          icon: Icons.photo_outlined,
+          child: widget.items.isSingle
+              ? SelectableText(widget.items.single.path.split('/').last)
+              : Text(
+                '${widget.items.length} items',
+                style: const TextStyle(fontStyle: FontStyle.italic),
+              ),
+        ),
+        MetadataField(
+          icon: Icons.local_activity,
+          child: Expanded(
+            // TODO: figure out why space is getting handled by `Home`
+            child: TextField(
+              controller: eventController,
+              focusNode: eventFocusNode,
+              onSubmitted: _handleEventSubmitted,
+            ),
           ),
         ),
         Center(
@@ -295,6 +363,43 @@ class _MetadataPanelState extends State<MetadataPanel> {
           child: WebViewWidget(controller: webViewController),
         ),
       ],
+    );
+  }
+}
+
+class MetadataField extends StatelessWidget {
+  const MetadataField({
+    super.key,
+    required this.icon,
+    this.onEdit,
+    this.editIcon = Icons.edit,
+    required this.child,
+  });
+
+  final IconData icon;
+  final VoidCallback? onEdit;
+  final IconData editIcon;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Icon(icon),
+          const SizedBox(width: 30),
+          child,
+          if (onEdit != null) ...<Widget>[
+            Expanded(child: Container()),
+            IconButton(
+              icon: Icon(editIcon),
+              onPressed: onEdit,
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

@@ -73,6 +73,7 @@ class _GeotagAppBarState extends State<GeotagAppBar> {
   }
 
   Future<void> _exportToFolder() async {
+    // TODO: confirm if the user only wants to export 1 item if only 1 is selected
     final MediaItems items = GeotagHome.of(context).featuredItems;
     String? path = await FilePicker.platform.getDirectoryPath(
       dialogTitle: 'Export to folder',
