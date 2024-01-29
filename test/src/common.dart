@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 
-import 'package:collection/collection.dart';
 import 'package:file/file.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geotag/src/bindings/db.dart';
