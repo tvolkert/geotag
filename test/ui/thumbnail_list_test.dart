@@ -6,7 +6,7 @@ import 'package:geotag/src/ui/thumbnail_list.dart';
 import '../src/common.dart';
 
 Future<void> main() async {
-  testGeotag('ThumbnailList produces no thumbnails if items is empty', (WidgetTester tester, ImageReferences images) async {
+  testGeotag('ThumbnailList produces no thumbnails if items is empty', (WidgetTester tester) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: ThumbnailList(),
@@ -15,7 +15,8 @@ Future<void> main() async {
     expect(find.byType(Thumbnail), findsNothing);
   });
 
-  testGeotag('ThumbnailList produces thumbnails if items is not empty', (WidgetTester tester, ImageReferences images) async {
+  testGeotag('ThumbnailList produces thumbnails if items is not empty', (WidgetTester tester) async {
+    final ImageReferences images = tester.loadImages();
     await MediaBinding.instance.items.addFiles(images.paths).drain<void>();
     await tester.pumpWidget(
       const MaterialApp(
@@ -25,7 +26,8 @@ Future<void> main() async {
     expect(find.byType(Thumbnail), findsNWidgets(images.length));
   });
 
-  testGeotag('filter by missing date works', (WidgetTester tester, ImageReferences images) async {
+  testGeotag('filter by missing date works', (WidgetTester tester) async {
+    final ImageReferences images = tester.loadImages();
     await MediaBinding.instance.items.addFiles(images.paths).drain<void>();
     await tester.pumpWidget(
       const MaterialApp(
@@ -37,7 +39,8 @@ Future<void> main() async {
     expect(find.byType(Thumbnail), findsNWidgets(3));
   });
 
-  testGeotag('filter by missing geo works', (WidgetTester tester, ImageReferences images) async {
+  testGeotag('filter by missing geo works', (WidgetTester tester) async {
+    final ImageReferences images = tester.loadImages();
     await MediaBinding.instance.items.addFiles(images.paths).drain<void>();
     await tester.pumpWidget(
       const MaterialApp(

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../bindings/clock.dart';
 import '../extensions/date_time.dart';
 import '../model/gps.dart';
 import '../model/media.dart';
@@ -78,7 +79,7 @@ class _MetadataPanelState extends State<MetadataPanel> {
         ..dateTimeOriginal = dateTime
         ..dateTimeDigitized = dateTime
         ..isModified = true
-        ..lastModified = DateTime.now()
+        ..lastModified = ClockBinding.instance.now()
         ;
     await item.commit();
   }
@@ -141,7 +142,7 @@ class _MetadataPanelState extends State<MetadataPanel> {
     item
         ..event = event
         ..isModified = true
-        ..lastModified = DateTime.now()
+        ..lastModified = ClockBinding.instance.now()
         ;
     await item.commit();
   }
@@ -150,7 +151,7 @@ class _MetadataPanelState extends State<MetadataPanel> {
     item
         ..latlng = coords.latlng
         ..isModified = true
-        ..lastModified = DateTime.now()
+        ..lastModified = ClockBinding.instance.now()
         ;
     await item.commit();
   }

@@ -1,9 +1,12 @@
 import 'dart:typed_data';
 
+import 'package:collection/collection.dart';
 import 'package:file/file.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:geotag/src/bindings/db.dart';
 import 'package:geotag/src/bindings/debug.dart';
 import 'package:geotag/src/bindings/files.dart';
+import 'package:geotag/src/model/media.dart';
 import 'package:geotag/src/foundation/debug.dart';
 import 'package:meta/meta.dart';
 
@@ -16,16 +19,94 @@ typedef GeotagTesterCallback = Future<void> Function(
 );
 
 @isTest
-void testGeotag(String description, GeotagTesterCallback callback) {
+void testGeotag(String description, WidgetTesterCallback callback) {
   testWidgets(description, (WidgetTester tester) async {
     debugUseRealIsolates = false;
     debugAllowBindingReinitialization = true;
     addTearDown(() => debugUseRealIsolates = true);
     addTearDown(() => debugAllowBindingReinitialization = false);
     await TestGeotagAppBinding.ensureInitialized(reinitialize: true);
-    final ImageReferences images = loadImages();
-    await callback(tester, images);
+    await callback(tester);
   });
+}
+
+int _nextItemId = 1;
+
+extension WidgetTesterExtensions on WidgetTester {
+  /// Loads the specified images onto the [FilesBinding.fs] file system and
+  /// returns the paths to the files that were created.
+  ImageReferences loadImages({
+    String oneByOneBlack = '/images/oneByOneBlack.jpg',
+    String oneByOneWhite = '/images/oneByOneWhite.jpg',
+    String oneByOneBlackJpgWithDate = '/images/oneByOneBlackJpgWithDate.jpg',
+    String oneByOneBlackJpgWithGeo = '/images/oneByOneBlackJpgWithGeo.jpg',
+    String oneByOneBlackJpgWithDateAndGeo = '/images/oneByOneBlackJpgWithDateAndGeo.jpg',
+  }) {
+    final ImageReferences images = ImageReferences(
+      oneByOneBlack: oneByOneBlack,
+      oneByOneWhite: oneByOneWhite,
+      oneByOneBlackJpgWithDate: oneByOneBlackJpgWithDate,
+      oneByOneBlackJpgWithGeo: oneByOneBlackJpgWithGeo,
+      oneByOneBlackJpgWithDateAndGeo: oneByOneBlackJpgWithDateAndGeo,
+    );
+
+    for (String path in images.paths) {
+      final File file = FilesBinding.instance.fs.file(path);
+      if (!file.parent.existsSync()) {
+        file.parent.createSync(recursive: true);
+      }
+    }
+
+    final FileSystem fs = FilesBinding.instance.fs;
+    fs.file(oneByOneBlack).writeAsBytesSync(oneByOneBlackJpgBytes);
+    fs.file(oneByOneWhite).writeAsBytesSync(oneByOneWhiteJpgBytes);
+    fs.file(oneByOneBlackJpgWithDate).writeAsBytesSync(oneByOneBlackJpgWithDateBytes);
+    fs.file(oneByOneBlackJpgWithGeo).writeAsBytesSync(oneByOneBlackJpgWithGeoBytes);
+    fs.file(oneByOneBlackJpgWithDateAndGeo).writeAsBytesSync(oneByOneBlackJpgWithDateAndGeoBytes);
+
+    return images;
+  }
+
+  DbRow newDbRow({
+    required String path,
+    MediaType type = MediaType.photo,
+    String? photoPath,
+    Uint8List? thumbnail,
+    String? latlng,
+    String? event,
+  }) {
+    return DbRow.from(<String, Object?>{
+      'ITEM_ID': _nextItemId++,
+      'TYPE': type,
+      'PATH': path,
+      'PHOTO_PATH': photoPath ?? path,
+      'THUMBNAIL': thumbnail,
+      'LATLNG': latlng,
+      'DATETIME_ORIGINAL': binding.clock.now().millisecondsSinceEpoch,
+      'DATETIME_DIGITIZED': binding.clock.now().millisecondsSinceEpoch,
+      'EVENT': event,
+      'MODIFIED': 0,
+      'DATETIME_LAST_MODIFIED': binding.clock.now().millisecondsSinceEpoch,
+    });
+  }
+
+  MediaItem newMediaItem({
+    required String path,
+    MediaType type = MediaType.photo,
+    String? photoPath,
+    Uint8List? thumbnail,
+    String? latlng,
+    String? event,
+  }) {
+    return MediaItem.fromDbRow(newDbRow(
+      path: path,
+      type: type,
+      photoPath: photoPath,
+      thumbnail: thumbnail,
+      latlng: latlng,
+      event: event,
+    ));
+  }
 }
 
 /// Contains the file system paths of images that were loaded with [loadImages].
@@ -60,43 +141,9 @@ class ImageReferences {
   }
 }
 
-/// Loads the specified images onto the [FilesBinding.fs] file system and
-/// returns the paths to the files that were created.
-ImageReferences loadImages({
-  String oneByOneBlack = '/images/oneByOneBlack.jpg',
-  String oneByOneWhite = '/images/oneByOneWhite.jpg',
-  String oneByOneBlackJpgWithDate = '/images/oneByOneBlackJpgWithDate.jpg',
-  String oneByOneBlackJpgWithGeo = '/images/oneByOneBlackJpgWithGeo.jpg',
-  String oneByOneBlackJpgWithDateAndGeo = '/images/oneByOneBlackJpgWithDateAndGeo.jpg',
-}) {
-  final ImageReferences images = ImageReferences(
-    oneByOneBlack: oneByOneBlack,
-    oneByOneWhite: oneByOneWhite,
-    oneByOneBlackJpgWithDate: oneByOneBlackJpgWithDate,
-    oneByOneBlackJpgWithGeo: oneByOneBlackJpgWithGeo,
-    oneByOneBlackJpgWithDateAndGeo: oneByOneBlackJpgWithDateAndGeo,
-  );
-
-  for (String path in images.paths) {
-    final File file = FilesBinding.instance.fs.file(path);
-    if (!file.parent.existsSync()) {
-      file.parent.createSync(recursive: true);
-    }
-  }
-
-  final FileSystem fs = FilesBinding.instance.fs;
-  fs.file(oneByOneBlack).writeAsBytesSync(_oneByOneBlackJpg);
-  fs.file(oneByOneWhite).writeAsBytesSync(_oneByOneWhiteJpg);
-  fs.file(oneByOneBlackJpgWithDate).writeAsBytesSync(_oneByOneBlackJpgWithDate);
-  fs.file(oneByOneBlackJpgWithGeo).writeAsBytesSync(_oneByOneBlackJpgWithGeo);
-  fs.file(oneByOneBlackJpgWithDateAndGeo).writeAsBytesSync(_oneByOneBlackJpgWithDateAndGeo);
-
-  return images;
-}
-
 /// Date: <unset>
 /// Geo: <unset>
-final Uint8List _oneByOneBlackJpg = Uint8List.fromList(<int>[
+final Uint8List oneByOneBlackJpgBytes = Uint8List.fromList(<int>[
   255, 216, 255, 224, 0, 16, 74, 70, 73, 70, 0, 1, 1, 1, 0, //
   72, 0, 72, 0, 0, 255, 254, 0, 19, 67, 114, 101, 97, 116, 101, //
   100, 32, 119, 105, 116, 104, 32, 71, 73, 77, 80, 255, 219, 0, 67, //
@@ -122,7 +169,7 @@ final Uint8List _oneByOneBlackJpg = Uint8List.fromList(<int>[
 
 /// Date: <unset>
 /// Geo: <unset>
-final Uint8List _oneByOneWhiteJpg = Uint8List.fromList(<int>[
+final Uint8List oneByOneWhiteJpgBytes = Uint8List.fromList(<int>[
   255, 216, 255, 224, 0, 16, 74, 70, 73, 70, 0, 1, 1, 1, 0, //
   72, 0, 72, 0, 0, 255, 219, 0, 67, 0, 1, 1, 1, 1, 1, //
   1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, //
@@ -146,7 +193,7 @@ final Uint8List _oneByOneWhiteJpg = Uint8List.fromList(<int>[
 
 /// Date: 2020:03:13 19:00:00 (COVID lockdown)
 /// Geo: <unset>
-final Uint8List _oneByOneBlackJpgWithDate = Uint8List.fromList(<int>[
+final Uint8List oneByOneBlackJpgWithDateBytes = Uint8List.fromList(<int>[
   255, 216, 255, 224, 0, 16, 74, 70, 73, 70, 0, 1, 1, 1, 0, //
   72, 0, 72, 0, 0, 255, 225, 0, 216, 69, 120, 105, 102, 0, 0, //
   77, 77, 0, 42, 0, 0, 0, 8, 0, 5, 1, 26, 0, 5, 0, //
@@ -186,7 +233,7 @@ final Uint8List _oneByOneBlackJpgWithDate = Uint8List.fromList(<int>[
 
 /// Date: <unset>
 /// Geo: 37.42, -122.08 (Google campus)
-final Uint8List _oneByOneBlackJpgWithGeo = Uint8List.fromList(<int>[
+final Uint8List oneByOneBlackJpgWithGeoBytes = Uint8List.fromList(<int>[
   255, 216, 255, 224, 0, 16, 74, 70, 73, 70, 0, 1, 1, 1, 0, //
   72, 0, 72, 0, 0, 255, 225, 0, 212, 69, 120, 105, 102, 0, 0, //
   77, 77, 0, 42, 0, 0, 0, 8, 0, 5, 1, 26, 0, 5, 0, //
@@ -226,7 +273,7 @@ final Uint8List _oneByOneBlackJpgWithGeo = Uint8List.fromList(<int>[
 
 /// Date: 2020:03:13 19:00:00 (COVID lockdown)
 /// Geo: 37.42, -122.08 (Google campus)
-final Uint8List _oneByOneBlackJpgWithDateAndGeo = Uint8List.fromList(<int>[
+final Uint8List oneByOneBlackJpgWithDateAndGeoBytes = Uint8List.fromList(<int>[
   255, 216, 255, 224, 0, 16, 74, 70, 73, 70, 0, 1, 1, 1, 0, //
   72, 0, 72, 0, 0, 255, 225, 1, 86, 69, 120, 105, 102, 0, 0, //
   77, 77, 0, 42, 0, 0, 0, 8, 0, 6, 1, 26, 0, 5, 0, //

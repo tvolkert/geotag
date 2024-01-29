@@ -281,13 +281,13 @@ class _ThumbnailListState extends State<ThumbnailList> {
     _selectionController = ListViewSelectionController(selectMode: SelectMode.multi);
     _selectionController.addListener(_handleSelectionChanged);
     _focusNode = FocusNode();
-    MediaBinding.instance.items.addListener(_handleItemCollectionChanged);
+    MediaBinding.instance.items.addStructureListener(_handleItemCollectionChanged);
     _updateItems();
   }
 
   @override
   void dispose() {
-    MediaBinding.instance.items.removeListener(_handleItemCollectionChanged);
+    MediaBinding.instance.items.removeStructureListener(_handleItemCollectionChanged);
     _focusNode.dispose();
     _selectionController.removeListener(_handleSelectionChanged);
     _selectionController.dispose();
@@ -495,7 +495,7 @@ class Thumbnail extends StatefulWidget {
   final bool isSelected;
   final ScrollToVisibleController controller;
 
-  String get path => item.path;
+  int get id => item.id;
   bool get hasLatlng => item.hasLatlng;
 
   @override
@@ -512,21 +512,21 @@ class _ThumbnailState extends State<Thumbnail> with ScrollToVisibleListener {
   @override
   void initState() {
     super.initState();
-    MediaBinding.instance.addItemListener(widget.path, _handleItemUpdated);
+    MediaBinding.instance.items.addMetadataListener(_handleItemUpdated, id: widget.id);
   }
 
   @override
   void didUpdateWidget(covariant Thumbnail oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.path != oldWidget.path) {
-      MediaBinding.instance.removeItemListener(oldWidget.path, _handleItemUpdated);
-      MediaBinding.instance.addItemListener(widget.path, _handleItemUpdated);
+    if (widget.id != oldWidget.id) {
+      MediaBinding.instance.items.removeMetadataListener(_handleItemUpdated, id: oldWidget.id);
+      MediaBinding.instance.items.addMetadataListener(_handleItemUpdated, id: widget.id);
     }
   }
 
   @override
   void dispose() {
-    MediaBinding.instance.removeItemListener(widget.path, _handleItemUpdated);
+    MediaBinding.instance.items.removeMetadataListener(_handleItemUpdated, id: widget.id);
     super.dispose();
   }
 

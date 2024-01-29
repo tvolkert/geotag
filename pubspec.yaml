@@ -10,6 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   chicago: any
+  clock: any
   collection: any
   file: any
   file_picker: ^5.2.4

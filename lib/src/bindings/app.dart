@@ -3,6 +3,7 @@ import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
+import 'clock.dart';
 import 'db.dart';
 import 'debug.dart';
 import 'files.dart';
@@ -10,7 +11,7 @@ import 'media.dart';
 import 'tasks.dart';
 
 class GeotagAppBinding extends AppBindingBase
-    with FilesBinding, DatabaseBinding, MediaBinding, TaskBinding {
+    with ClockBinding, FilesBinding, DatabaseBinding, MediaBinding, TaskBinding {
   /// Creates and initializes the application binding if necessary.
   ///
   /// Applications should call this method before calling [runApp].

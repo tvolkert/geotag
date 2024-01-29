@@ -1,4 +1,5 @@
 import 'package:geotag/src/bindings/db.dart';
+import 'package:geotag/src/foundation/base.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart' as sqflite;
 
 typedef DbTables = Map<String, DbResults>;
@@ -10,6 +11,15 @@ class FakeDatabase implements sqflite.Database {
   @override
   noSuchMethod(Invocation invocation) {
     return super.noSuchMethod(invocation);
+  }
+
+  Predicate<DbRow> _getWherePredicate(String where, List<Object?> whereArgs) {
+    final RegExp wherePattern = RegExp(r'^([A-Z_]+) = \?$');
+    assert(whereArgs.length == 1);
+    assert(wherePattern.hasMatch(where));
+    final RegExpMatch match = wherePattern.firstMatch(where)!;
+    final String field = match.group(1)!;
+    return (DbRow row) => row[field] == whereArgs.single;
   }
 
   @override
@@ -36,10 +46,15 @@ class FakeDatabase implements sqflite.Database {
     List<Object?>? whereArgs,
     sqflite.ConflictAlgorithm? conflictAlgorithm,
   }) {
-    final DbResults? rows = _tables[table];
-    assert(rows != null);
-    // TODO: implement update
-    throw UnimplementedError();
+    assert(_tables.containsKey(table));
+    assert(where != null);
+    assert(whereArgs != null);
+    assert(conflictAlgorithm == null);
+    final DbResults rows = _tables[table]!;
+    final Predicate<DbRow> shouldUpdate = _getWherePredicate(where!, whereArgs!);
+    final int result = rows.where(shouldUpdate).length;
+    rows.where(shouldUpdate).forEach((DbRow row) => row.addAll(values));
+    return Future<int>.value(result);
   }
 
   @override
@@ -53,13 +68,8 @@ class FakeDatabase implements sqflite.Database {
       return Future<int>.value(removedRows?.length ?? 0);
     } else if (_tables.containsKey(table)) {
       assert(whereArgs != null);
-      assert(whereArgs!.length == 1);
-      final RegExp wherePattern = RegExp(r'^([a-zA-Z]+) = \?$');
-      assert(wherePattern.hasMatch(where));
-      final RegExpMatch match = wherePattern.firstMatch(where)!;
-      final String field = match.group(1)!;
+      final Predicate<DbRow> shouldRemove = _getWherePredicate(where, whereArgs!);
       final DbResults rows = _tables[table]!;
-      bool shouldRemove(DbRow row) => row[field] == whereArgs!.single;
       int result = rows.where(shouldRemove).length;
       rows.removeWhere(shouldRemove);
       return Future<int>.value(result);

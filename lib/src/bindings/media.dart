@@ -12,30 +12,8 @@ mixin MediaBinding on AppBindingBase, DatabaseBinding {
   static late MediaBinding _instance;
   static MediaBinding get instance => _instance;
 
-  // TODO: change to be keyed off ITEM_ID instead of PATH
-  final Map<String, MediaNotifier> _itemNotifiers = <String, MediaNotifier>{};
-
   late RootMediaItems _items;
   RootMediaItems get items => _items;
-
-  void addItemListener(String path, VoidCallback listener) {
-    final MediaNotifier notifier = _itemNotifiers.putIfAbsent(path, () => MediaNotifier());
-    notifier.addListener(listener);
-  }
-
-  void removeItemListener(String path, VoidCallback listener) {
-    final MediaNotifier? notifier = _itemNotifiers[path];
-    assert(notifier != null);
-    notifier!.removeListener(listener);
-    if (!notifier.hasListeners) {
-      notifier.dispose();
-      _itemNotifiers.remove(path);
-    }
-  }
-
-  void notifyItemChanged(String path) {
-    _itemNotifiers[path]?.notifyListeners();
-  }
 
   @override
   @protected

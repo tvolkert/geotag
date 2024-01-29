@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../bindings/clock.dart';
+
 /// A widget that allows the user to edit the DateTime associated with a photo
 /// or video.
 ///
@@ -103,7 +105,7 @@ class _DateTimeEditorDialogState extends State<DateTimeEditorDialog> {
   }
 
   _initialize() {
-    final DateTime instant = widget.initialDateTime ?? DateTime.now();
+    final DateTime instant = widget.initialDateTime ?? ClockBinding.instance.now();
     year = defaultYear = instant.year;
     month = defaultMonth = instant.month;
     day = defaultDay = instant.day;

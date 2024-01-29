@@ -1,6 +1,7 @@
 // ignore_for_file: avoid_print
 
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:chicago/chicago.dart' as chicago show binarySearch;
 import 'package:collection/collection.dart';
@@ -13,9 +14,9 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart' as sqflite;
 
 import '../foundation/base.dart';
 import '../foundation/isolates.dart';
+import '../bindings/clock.dart';
 import '../bindings/db.dart';
 import '../bindings/files.dart';
-import '../bindings/media.dart';
 import 'gps.dart';
 import 'image.dart';
 import 'metadata.dart';
@@ -42,17 +43,34 @@ enum MediaType {
 /// change by calling [MediaBinding.addItemListener].
 class MediaItem {
   /// Creates a new [MediaItem] with no metadata.
-  MediaItem._empty() : _row = DbRow(), _unsavedRow = DbRow();
+  MediaItem._empty()
+      : _row = DbRow(),
+        _unsavedRow = DbRow();
 
   /// Creates a new [MediaItem] from the specified database row.
   ///
   /// The [row] will be used directly as the backing data structure for this
   /// newly created item, so changes to the row will be reflected in this
   /// item.
-  MediaItem.fromDbRow(DbRow row) : _row = row, _unsavedRow = DbRow.from(row);
+  MediaItem.fromDbRow(DbRow row)
+      : _row = row,
+        _unsavedRow = DbRow.from(row);
 
   final DbRow _row;
   final DbRow _unsavedRow;
+  RootMediaItems? _owner;
+
+  bool get _isAttached => _owner != null;
+
+  void _attach(RootMediaItems items) {
+    assert(!_isAttached);
+    _owner = items;
+  }
+
+  void _detach() {
+    assert(_isAttached);
+    _owner = null;
+  }
 
   /// The unique id of this media item.
   ///
@@ -253,21 +271,21 @@ class MediaItem {
     _unsavedRow['DATETIME_LAST_MODIFIED'] = value.millisecondsSinceEpoch;
   }
 
+  /// Returns a new media item that contains a copy of this item's metadata but
+  /// none of this item's unsaved edits.
+  ///
+  /// The cloned media item will be unattached to any list.
+  MediaItem clone() => MediaItem.fromDbRow(DbRow.from(_row));
+
   /// Writes this media item's metadata fields to the database and notifies
   /// listeners that the metadata has changed.
   Future<void> commit() async {
-    final RootMediaItems items = MediaBinding.instance.items;
-    final int oldIndex = items.indexOf(this);
-    await _writeToDb(DatabaseBinding.instance.db);
-    _persistAndNotify();
-    if (oldIndex >= 0) {
-      // The edits have caused this item to be in a different position in the
-      // [MediaItems] list.
-      items._removeAndReinsertFrom(oldIndex);
-    }
+    assert(_isAttached);
+    await _writePendingEditsToDb(DatabaseBinding.instance.db);
+    _persistPendingEdits();
   }
 
-  Future<void> _writeToDb(sqflite.Database db) {
+  Future<void> _writePendingEditsToDb(sqflite.Database db) {
     return db.update(
       'MEDIA',
       <String, Object?>{
@@ -278,14 +296,14 @@ class MediaItem {
         'MODIFIED': _unsavedRow['MODIFIED'],
         'DATETIME_LAST_MODIFIED': _unsavedRow['DATETIME_LAST_MODIFIED'],
       },
-      where: 'PATH = ?',
-      whereArgs: <String>[path],
+      where: 'ITEM_ID = ?',
+      whereArgs: <int>[id],
     );
   }
 
-  void _persistAndNotify() {
-    _row.addAll(_unsavedRow);
-    MediaBinding.instance.notifyItemChanged(path);
+  void _persistPendingEdits() {
+    assert(_isAttached);
+    _owner!._updateItem(this);
   }
 
   @override
@@ -398,10 +416,6 @@ final class ByDate extends MediaItemComparator {
 base class MediaItemsView {
   MediaItemsView._(this._items);
 
-  MediaItemsView.empty() : _items = <MediaItem>[];
-
-  MediaItemsView.from(Iterable<MediaItem> items) : _items = List<MediaItem>.from(items);
-
   final List<MediaItem> _items;
 
   bool get isEmpty => _items.isEmpty;
@@ -409,6 +423,8 @@ base class MediaItemsView {
   bool get isNotEmpty => _items.isNotEmpty;
 
   MediaItem get first => _items.first;
+
+  MediaItem get last => _items.last;
 
   bool get isSingle => _items.isSingle;
 
@@ -428,26 +444,104 @@ base class MediaItemsView {
 abstract base class MediaItems extends MediaItemsView {
   MediaItems._(List<MediaItem> items) : super._(items);
 
-  int _generation = 1;
+  final LinkedList<_FilteredItemsWeakRef> _children = LinkedList<_FilteredItemsWeakRef>();
+  MediaNotifier? _structureNotifier;
 
-  RootMediaItems get root => MediaBinding.instance.items;
+  /// The media items list whence this list was created.
+  ///
+  /// If the parent list is non-null, then it will be a superset of this list.
+  ///
+  /// This will be non-null for all lists except the [root] list.
+  MediaItems? get parent;
 
+  /// The media items list that exists at the root of the [parent] hierarchy.
+  RootMediaItems get root;
+
+  /// Adds a listener to be notified when the structure of this list changes.
+  ///
+  /// A [MediaItems] list is said to have changed structure when either its
+  /// order or its [length] has changed. Its order can change either by virtue of
+  /// its [comparator] being modified or by virtue of one of its items changing
+  /// its metadata such that it now exists in a different place in the list (as
+  /// determined by the [comparator]).
+  void addStructureListener(VoidCallback listener) {
+    _structureNotifier ??= MediaNotifier();
+    _structureNotifier!.addListener(listener);
+  }
+
+  /// Removes a listener that was added with [addStructureListener].
+  void removeStructureListener(VoidCallback listener) {
+    assert(_structureNotifier != null);
+    _structureNotifier!.removeListener(listener);
+    if (!_structureNotifier!.hasListeners) {
+      _structureNotifier!.dispose();
+      _structureNotifier = null;
+    }
+  }
+
+  void _notifyStructureListeners() {
+    _structureNotifier?.notifyListeners();
+  }
+
+  /// The comparator that determines the sort order of this list.
+  ///
+  /// New items that are added to the list (via [RootMediaItems.addFiles]) will
+  /// automatically be added in order, and updates to [MediaItem] metadata for
+  /// items in the list will cause those items to automatically be moved to the
+  /// appropriate new location in the list as to maintain the sort order.
+  ///
+  /// Updating the comparator will cause the sort order to correspondingly be
+  /// updated, thus notifying listeners that were added via
+  /// [addStructureListener].
   MediaItemComparator get comparator;
   set comparator(MediaItemComparator value);
 
+  /// Whether this list contains any items with their [MediaItem.isModified]
+  /// bit set.
   bool get containsModified => _items.where((MediaItem item) => item.isModified).isNotEmpty;
 
   static bool _isModified(MediaItem item) => item.isModified;
 
+  /// Returns a child media items list containing only those items in this list
+  /// that have their [MediaItem.isModified] bit set.
+  ///
+  /// The returned list will have its [parent] list set to this list.
   MediaItems get whereModified => where(const PredicateMediaItemFilter(_isModified));
 
-  MediaItems where(MediaItemFilter filter) => FilteredMediaItems(filter, this);
+  /// Returns a child media items list containing only those items in this list
+  /// that pass the specified [filter].
+  MediaItems where(MediaItemFilter filter) {
+    final FilteredMediaItems result = FilteredMediaItems._(filter, this);
+    _children.add(_FilteredItemsWeakRef(result));
+    return result;
+  }
 
+  /// Visits each child media items list that has been created and not yet
+  /// garbage collected.
+  void _forEachChild(void Function(FilteredMediaItems items) visitor) {
+    for (_FilteredItemsWeakRef reference in _children) {
+      if (reference.isCleared) {
+        reference.unlink();
+      } else {
+        visitor(reference.target);
+      }
+    }
+  }
+
+  /// Returns the index of the specified [item] in this list, or -1 if the item
+  /// does not appear in this list.
+  ///
+  /// This uses the [comparator] to perform a binary search, so this method runs
+  /// in O(log n) time.
   int indexOf(MediaItem item) {
     final int index = chicago.binarySearch(_items, item, compare: comparator.compare);
     return index < 0 ? -1 : index;
   }
 
+  /// Writes these media items to disk, encoding their metadata in their files.
+  ///
+  /// Returns a stream that will yield an event for every item in this list as
+  /// each item is written to disk.
   Stream<void> writeFilesToDisk() {
     // TODO: provide hook whereby caller can cancel operation.
     final List<MediaItem> localItems = List<MediaItem>.from(_items);
@@ -468,12 +562,17 @@ abstract base class MediaItems extends MediaItemsView {
       // local row object in this isolate needs to be updated to match.
       localItems[i]
         ..isModified = false
-        .._persistAndNotify();
+        .._persistPendingEdits();
       controller.add(null);
     }, onError: controller.addError, onDone: controller.close);
     return controller.stream;
   }
 
+  /// Deletes the items in this list.
+  ///
+  /// Returns a stream that will yield an event for every item that was deleted.
+  /// When this stream is done, will not contain any items ([isEmpty] will
+  /// return true).
   Stream<void> deleteFiles() {
     // TODO: provide hook whereby caller can cancel operation.
     final List<MediaItem> localItems = List<MediaItem>.from(_items);
@@ -493,12 +592,20 @@ abstract base class MediaItems extends MediaItemsView {
       // from the file system, but the changes were done in a separate isolate,
       // so the items list needs to be updated to match.
       final MediaItem removed = localItems[i];
-      root._removeAt(root.indexOf(removed));
+      root._removeItemAt(root.indexOf(removed));
       controller.add(null);
     }, onError: controller.addError, onDone: controller.close);
     return controller.stream;
   }
 
+  /// Exports the items in this list to the specified folder.
+  ///
+  /// The folder will be resolved using [FilesBinding.fs].
+  ///
+  /// The contents of this list will not be modified by this operation.
+  ///
+  /// Returns a stream that will yield an event for every item in this list as
+  /// each item is exported to the folder.
   Stream<void> exportToFolder(String folder) {
     final _ExportToFolderMessage message = _ExportToFolderMessage._(
       FilesBinding.instance.fs,
@@ -517,6 +624,7 @@ abstract base class MediaItems extends MediaItemsView {
     return controller.stream;
   }
 
+  /// This runs in a separate isolate.
   static Stream<int> _writeToDiskWorker(_WriteToDiskMessage message) async* {
     final sqflite.Database db = await message.dbFactory();
     for (int i = 0; i < message.items.length; i++) {
@@ -546,7 +654,7 @@ abstract base class MediaItems extends MediaItemsView {
             await mp4.writeMetadata(dateTime: item.dateTime, coordinates: item.coords);
         }
         item.isModified = false;
-        await item._writeToDb(db);
+        await item._writePendingEditsToDb(db);
         yield i;
       } catch (error, stack) {
         yield* Stream<int>.error(error, stack);
@@ -554,6 +662,7 @@ abstract base class MediaItems extends MediaItemsView {
     }
   }
 
+  /// This runs in a separate isolate.
   static Stream<int> _deleteFilesWorker(_DeleteFilesMessage message) async* {
     final sqflite.Database db = await message.dbFactory();
     // Traverse the list backwards so that our stream of indexes will be valid
@@ -573,6 +682,7 @@ abstract base class MediaItems extends MediaItemsView {
     }
   }
 
+  /// This runs in a separate isolate.
   static Stream<DbRow> _exportToFolderWorker(_ExportToFolderMessage message) async* {
     final Directory root = message.fs.directory(message.folder);
     assert(root.existsSync());
@@ -580,8 +690,8 @@ abstract base class MediaItems extends MediaItemsView {
       try {
         final int year = item.hasDateTime ? item.dateTime!.year : 0;
         final Directory parent = root
-          .childDirectory(year.toString().padLeft(4, '0'))
-          .childDirectory(item.event ?? 'No Event');
+            .childDirectory(year.toString().padLeft(4, '0'))
+            .childDirectory(item.event ?? 'No Event');
         if (!parent.existsSync()) {
           parent.createSync(recursive: true);
         }
@@ -603,8 +713,18 @@ abstract base class MediaItems extends MediaItemsView {
   }
 }
 
+/// A synthetic media items list that is always empty.
+///
+/// Mutator methods on this type of media items list are all unsupported and
+/// will throw an error if they are invoked.
 final class EmptyMediaItems extends MediaItems {
-  EmptyMediaItems() : super._(<MediaItem>[]);
+  EmptyMediaItems() : super._(List<MediaItem>.empty());
+
+  @override
+  MediaItems? get parent => null;
+
+  @override
+  RootMediaItems get root => throw UnsupportedError('root');
 
   @override
   MediaItemComparator get comparator => const ById(Ascending());
@@ -622,57 +742,24 @@ final class EmptyMediaItems extends MediaItems {
   Stream<void> exportToFolder(String folder) => throw UnsupportedError('exportToFolder');
 }
 
+/// An unfiltered media items list with no parent.
 final class RootMediaItems extends MediaItems {
-  RootMediaItems.fromDbResults(DbResults results) : _comparator = const ById(Ascending()), super._(
-    List<MediaItem>.generate(results.length, (int index) {
-      return MediaItem.fromDbRow(results[index]);
-    }),
-  );
+  RootMediaItems.fromDbResults(DbResults results)
+      : _comparator = const ById(Ascending()),
+        super._(results.map<MediaItem>(MediaItem.fromDbRow).toList()) {
+    for (MediaItem item in _items) {
+      item._attach(this);
+    }
+  }
 
-  MediaNotifier? _notifier;
   MediaItemComparator _comparator;
+  final Map<int?, MediaNotifier> _metadataNotifiers = <int?, MediaNotifier>{};
+
+  @override
+  MediaItems? get parent => null;
 
   @override
   RootMediaItems get root => this;
-
-  void addListener(VoidCallback listener) {
-    _notifier ??= MediaNotifier();
-    _notifier!.addListener(listener);
-  }
-
-  void removeListener(VoidCallback listener) {
-    assert(_notifier != null);
-    _notifier!.removeListener(listener);
-    if (!_notifier!.hasListeners) {
-      _notifier!.dispose();
-      _notifier = null;
-    }
-  }
-
-  void _removeAndReinsertFrom(int index) {
-    assert(index >= 0);
-    final MediaItem item = _items.removeAt(index);
-    int newIndex = chicago.binarySearch<MediaItem>(_items, item, compare: comparator.compare);
-    assert(newIndex < 0);
-    newIndex = -newIndex - 1;
-    _items.insert(newIndex, item);
-    _generation++;
-    if (index != newIndex) {
-      _notify();
-    }
-  }
-
-  void _notify() {
-    _notifier?.notifyListeners();
-  }
-
-  MediaItem _removeAt(int index) {
-    assert(index >= 0);
-    final MediaItem removed = _items.removeAt(index);
-    _generation++;
-    _notify();
-    return removed;
-  }
 
   @override
   MediaItemComparator get comparator => _comparator;
@@ -682,16 +769,97 @@ final class RootMediaItems extends MediaItems {
     if (value != _comparator) {
       _comparator = value;
       _items.sort(value.compare);
-      _generation++;
-      _notify();
+      _forEachChild((FilteredMediaItems items) {
+        items._handleParentSorted();
+      });
+      _notifyStructureListeners();
     }
   }
 
+  void addMetadataListener(VoidCallback listener, {int? id}) {
+    final MediaNotifier notifier = _metadataNotifiers.putIfAbsent(id, () => MediaNotifier());
+    notifier.addListener(listener);
+  }
+
+  void removeMetadataListener(VoidCallback listener, {int? id}) {
+    final MediaNotifier? notifier = _metadataNotifiers[id];
+    assert(notifier != null);
+    notifier!.removeListener(listener);
+    if (!notifier.hasListeners) {
+      notifier.dispose();
+      _metadataNotifiers.remove(id);
+    }
+  }
+
+  void _insertItem(MediaItem item) {
+    assert(!item._isAttached);
+    int index = chicago.binarySearch<MediaItem>(_items, item, compare: comparator.compare);
+    assert(index < 0);
+    index = -index - 1;
+    _items.insert(index, item);
+    item._attach(this);
+    assert(() {
+      final List<MediaItem> copy = List<MediaItem>.from(_items)..sort(_comparator.compare);
+      return const ListEquality<MediaItem>().equals(_items, copy);
+    }());
+    _forEachChild((FilteredMediaItems items) {
+      items._handleParentItemInsertedAt(index);
+    });
+    _notifyStructureListeners();
+  }
+
+  void _updateItem(MediaItem item) {
+    assert(item._owner == this);
+    final int oldIndex = indexOf(item);
+    assert(oldIndex >= 0);
+    // Remove and re-insert to make sure it's sorted correctly.
+    MediaItem removed = _items.removeAt(oldIndex);
+    assert(removed == item);
+    removed = item.clone();
+    item._row.addAll(item._unsavedRow);
+    int newIndex = chicago.binarySearch<MediaItem>(_items, item, compare: comparator.compare);
+    assert(newIndex < 0);
+    newIndex = -newIndex - 1;
+    _items.insert(newIndex, item);
+    _metadataNotifiers[item.id]?.notifyListeners();
+    _metadataNotifiers[null]?.notifyListeners();
+    _forEachChild((FilteredMediaItems items) {
+      items._handleParentItemUpdated(oldIndex, newIndex, removed);
+    });
+    if (oldIndex != newIndex) {
+      _notifyStructureListeners();
+    }
+  }
+
+  MediaItem _removeItemAt(int index) {
+    assert(index >= 0);
+    final MediaItem removed = _items.removeAt(index);
+    assert(removed._owner == this);
+    removed._detach();
+    _forEachChild((FilteredMediaItems items) {
+      items._handleParentItemRemovedAt(index, removed);
+    });
+    _notifyStructureListeners();
+    return removed;
+  }
+
+  /// Adds the files specified by [paths] to this media item list.
+  ///
+  /// Returns a stream that will yield an event for every item that was added as
+  /// they are added. If an item fails to add for any reason, the stream will
+  /// yield an error event, such that the total number of stream events is
+  /// guaranteed to match the length of the [paths] input.
+  ///
+  /// The files will be resolved using [FilesBinding.fs].
+  ///
+  /// This will notify structure listeners (see [addStructureListener]) once
+  /// for each item that is added.
   Stream<void> addFiles(Iterable<String> paths) {
     final Directory appSupportDir = FilesBinding.instance.applicationSupportDirectory;
     final _AddFilesMessage message = _AddFilesMessage._(
       DatabaseBinding.instance.databaseFactory,
       FilesBinding.instance.fs,
+      ClockBinding.instance.now,
       appSupportDir.absolute.path,
       paths,
     );
@@ -703,15 +871,7 @@ final class RootMediaItems extends MediaItems {
     final StreamController<void> controller = StreamController<void>();
     rows.listen((DbRow row) {
       final MediaItem item = MediaItem.fromDbRow(row);
-      final int index = chicago.binarySearch<MediaItem>(_items, item, compare: comparator.compare);
-      assert(index < 0);
-      _items.insert(-index - 1, item);
-      _generation++;
-      _notify();
-      assert(() {
-        final List<MediaItem> copy = List<MediaItem>.from(_items)..sort(_comparator.compare);
-        return const ListEquality<MediaItem>().equals(_items, copy);
-      }());
+      _insertItem(item);
       controller.add(null);
     }, onError: controller.addError, onDone: controller.close);
     return controller.stream;
@@ -746,7 +906,7 @@ final class RootMediaItems extends MediaItems {
             ..latlng = metadata.coordinates?.latlng
             ..dateTimeOriginal = metadata.dateTimeOriginal
             ..dateTimeDigitized = metadata.dateTimeDigitized
-            ..lastModified = DateTime.now()
+            ..lastModified = message.now()
             ..isModified = false;
           item.id = await db.insert('MEDIA', item._unsavedRow);
           return item._unsavedRow;
@@ -777,6 +937,18 @@ abstract base class MediaItemFilter {
   const MediaItemFilter();
 
   Iterable<MediaItem> apply(List<MediaItem> source);
+
+  @mustCallSuper
+  void _handleParentItemInsertedAt(int index) {}
+
+  @mustCallSuper
+  void _handleParentItemUpdated(int oldIndex, int newIndex, MediaItem beforeUpdate) {}
+
+  @mustCallSuper
+  void _handleParentItemRemovedAt(int index, MediaItem removed) {}
+
+  @mustCallSuper
+  void _handleParentSorted() {}
 }
 
 final class PredicateMediaItemFilter extends MediaItemFilter {
@@ -789,56 +961,96 @@ final class PredicateMediaItemFilter extends MediaItemFilter {
 }
 
 final class IndexedMediaItemFilter extends MediaItemFilter {
-  const IndexedMediaItemFilter(this.indexes);
+  IndexedMediaItemFilter(Iterable<int> indexes) : _indexes = indexes.toList();
 
-  final Iterable<int> indexes;
+  final List<int> _indexes;
+
+  @visibleForTesting
+  Iterable<int> get indexes => _indexes;
 
   @override
   Iterable<MediaItem> apply(List<MediaItem> source) {
     final List<MediaItem> result = <MediaItem>[];
-    for (int index in indexes) {
+    for (int index in _indexes) {
       result.add(source[index]);
     }
     return result;
   }
+
+  @override
+  void _handleParentItemInsertedAt(int index) {
+    super._handleParentItemInsertedAt(index);
+    for (int i = 0; i < _indexes.length; i++) {
+      final int localIndex = _indexes[i];
+      if (localIndex >= index) {
+        _indexes[i] = localIndex + 1;
+      }
+    }
+  }
+
+  @override
+  void _handleParentItemUpdated(int oldIndex, int newIndex, MediaItem beforeUpdate) {
+    super._handleParentItemUpdated(oldIndex, newIndex, beforeUpdate);
+    for (int i = 0; i < _indexes.length; i++) {
+      final int localIndex = _indexes[i];
+      if (localIndex == oldIndex) {
+        _indexes[i] = newIndex;
+      } else if (localIndex > oldIndex && localIndex <= newIndex) {
+        _indexes[i] = localIndex - 1;
+      } else if (localIndex < oldIndex && localIndex >= newIndex) {
+        _indexes[i] = localIndex + 1;
+      }
+    }
+  }
+
+  @override
+  void _handleParentItemRemovedAt(int index, MediaItem removed) {
+    super._handleParentItemRemovedAt(index, removed);
+    for (int i = _indexes.length - 1; i >= 0; i--) {
+      final int localIndex = _indexes[i];
+      if (localIndex == index) {
+        _indexes.removeAt(i);
+      } else if (localIndex > index) {
+        _indexes[i] = localIndex - 1;
+      }
+    }
+  }
+}
+
+final class _FilteredItemsWeakRef extends LinkedListEntry<_FilteredItemsWeakRef> {
+  _FilteredItemsWeakRef(FilteredMediaItems items)
+      : _reference = WeakReference<FilteredMediaItems>(items);
+
+  final WeakReference<FilteredMediaItems> _reference;
+
+  bool get isCleared => _reference.target == null;
+
+  FilteredMediaItems get target => _reference.target!;
 }
 
 final class FilteredMediaItems extends MediaItems {
-  FilteredMediaItems(this.filter, this.parent) : super._(<MediaItem>[]) {
-    _debugAssertChainToRoot();
+  FilteredMediaItems._(this.filter, this.parent) : super._(<MediaItem>[]) {
     _updateItems();
   }
 
-  final MediaItems parent;
   final MediaItemFilter filter;
 
-  void _debugAssertChainToRoot() {
-    assert(() {
-      MediaItems root = parent;
-      while (root is FilteredMediaItems) {
-        root = root.parent;
-      }
-      return root == MediaBinding.instance.items;
-    }());
-  }
+  @override
+  final MediaItems parent;
 
   @override
   RootMediaItems get root {
-    _debugAssertChainToRoot();
-    return MediaBinding.instance.items;
-  }
-
-  @override
-  List<MediaItem> get _items {
-    if (_generation != parent._generation) {
-      _updateItems();
+    MediaItems root = parent;
+    while (root is FilteredMediaItems) {
+      root = root.parent;
     }
-    return super._items;
+    return root as RootMediaItems;
   }
 
   void _updateItems() {
-    super._items..clear()..addAll(filter.apply(parent._items));
-    _generation = parent._generation;
+    _items
+      ..clear()
+      ..addAll(filter.apply(parent._items));
   }
 
   @override
@@ -846,13 +1058,61 @@ final class FilteredMediaItems extends MediaItems {
 
   @override
   set comparator(MediaItemComparator value) => parent.comparator = value;
+
+  void _handleParentItemInsertedAt(int index) {
+    filter._handleParentItemInsertedAt(index);
+    _updateItems();
+    final int localIndex = indexOf(parent[index]);
+    if (localIndex >= 0) {
+      _forEachChild((FilteredMediaItems items) {
+        items._handleParentItemInsertedAt(localIndex);
+      });
+      _notifyStructureListeners();
+    }
+  }
+
+  void _handleParentItemUpdated(int oldIndex, int newIndex, MediaItem beforeUpdate) {
+    filter._handleParentItemUpdated(oldIndex, newIndex, beforeUpdate);
+    final int localOldIndex = indexOf(parent[newIndex]);
+    _updateItems();
+    final int localNewIndex = indexOf(parent[newIndex]);
+    _forEachChild((FilteredMediaItems items) {
+      items._handleParentItemUpdated(localOldIndex, localNewIndex, beforeUpdate);
+    });
+    if (localOldIndex != localNewIndex) {
+      _notifyStructureListeners();
+    }
+  }
+
+  void _handleParentItemRemovedAt(int index, MediaItem removed) {
+    filter._handleParentItemRemovedAt(index, removed);
+    final int localIndex = indexOf(removed);
+    _updateItems();
+    assert(indexOf(removed) == -1);
+    if (localIndex >= 0) {
+      _forEachChild((FilteredMediaItems items) {
+        items._handleParentItemRemovedAt(localIndex, removed);
+      });
+      _notifyStructureListeners();
+    }
+  }
+
+  void _handleParentSorted() {
+    filter._handleParentSorted();
+    _updateItems();
+    _forEachChild((FilteredMediaItems items) {
+      items._handleParentSorted();
+    });
+    _notifyStructureListeners();
+  }
 }
 
 class _AddFilesMessage {
-  const _AddFilesMessage._(this.dbFactory, this.fs, this.appSupportPath, this.paths);
+  const _AddFilesMessage._(this.dbFactory, this.fs, this.now, this.appSupportPath, this.paths);
 
   final DatabaseFactory dbFactory;
   final FileSystem fs;
+  final TimestampFactory now;
   final String appSupportPath;
   final Iterable<String> paths;
 }
