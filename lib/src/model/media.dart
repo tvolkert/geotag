@@ -368,9 +368,9 @@ sealed class MediaItemComparator {
   /// Returns -1, 0, or 1 if item [a] is less than, equal to, or greater than
   /// item [b], respectively.
   ///
-  /// Subclasses are only ever allowed to return 0 if [a] and [b] are
-  /// represented by the same [MediaItem.id]; otherwise, comparators must
-  /// find a way to break the equality.
+  /// Subclasses are both (a) required, and (b) only ever allowed to return 0
+  /// when [a] and [b] are logically equal (operator `==` returns true).
+  /// Otherwise, comparators must find a way to break the equality.
   @protected
   int doCompare(MediaItem a, MediaItem b);
 
@@ -400,7 +400,9 @@ final class ByDate extends MediaItemComparator {
   @override
   @protected
   int doCompare(MediaItem a, MediaItem b) {
-    if (a.dateTime == null && b.dateTime == null) {
+    if (a == b) {
+      return 0;
+    } else if (a.dateTime == null && b.dateTime == null) {
       return _byId.compare(a, b);
     } else if (a.dateTime == null) {
       return -1;
@@ -534,7 +536,7 @@ abstract base class MediaItems extends MediaItemsView {
   /// This uses the [comparator] to perform a binary search, so this method runs
   /// in O(log n) time.
   int indexOf(MediaItem item) {
-    final int index = chicago.binarySearch(_items, item, compare: comparator.compare);
+    final int index = chicago.binarySearch<MediaItem>(_items, item, compare: comparator.compare);
     return index < 0 ? -1 : index;
   }
 
@@ -767,10 +769,12 @@ final class RootMediaItems extends MediaItems {
   @override
   set comparator(MediaItemComparator value) {
     if (value != _comparator) {
+      final MediaItemComparator oldComparator = _comparator;
       _comparator = value;
+      final List<MediaItem> oldItems = List<MediaItem>.from(_items);
       _items.sort(value.compare);
       _forEachChild((FilteredMediaItems items) {
-        items._handleParentSorted();
+        items._handleParentSorted(oldItems, oldComparator);
       });
       _notifyStructureListeners();
     }
@@ -948,7 +952,8 @@ abstract base class MediaItemFilter {
   void _handleParentItemRemovedAt(int index, MediaItem removed) {}
 
   @mustCallSuper
-  void _handleParentSorted() {}
+  void _handleParentSorted(List<MediaItem> oldItems, MediaItemComparator oldComparator,
+      List<MediaItem> items, MediaItemComparator comparator) {}
 }
 
 final class PredicateMediaItemFilter extends MediaItemFilter {
@@ -1015,6 +1020,18 @@ final class IndexedMediaItemFilter extends MediaItemFilter {
       }
     }
   }
+
+  @override
+  void _handleParentSorted(List<MediaItem> oldItems, MediaItemComparator oldComparator,
+      List<MediaItem> items, MediaItemComparator comparator) {
+    super._handleParentSorted(oldItems, oldComparator, items, comparator);
+    for (int i = 0; i < _indexes.length; i++) {
+      final int localIndex = _indexes[i];
+      final MediaItem item = oldItems[localIndex];
+      _indexes[i] = chicago.binarySearch<MediaItem>(items, item, compare: comparator.compare);
+      assert(_indexes[i] >= 0);
+    }
+  }
 }
 
 final class _FilteredItemsWeakRef extends LinkedListEntry<_FilteredItemsWeakRef> {
@@ -1073,7 +1090,7 @@ final class FilteredMediaItems extends MediaItems {
 
   void _handleParentItemUpdated(int oldIndex, int newIndex, MediaItem beforeUpdate) {
     filter._handleParentItemUpdated(oldIndex, newIndex, beforeUpdate);
-    final int localOldIndex = indexOf(parent[newIndex]);
+    final int localOldIndex = indexOf(beforeUpdate);
     _updateItems();
     final int localNewIndex = indexOf(parent[newIndex]);
     _forEachChild((FilteredMediaItems items) {
@@ -1097,11 +1114,12 @@ final class FilteredMediaItems extends MediaItems {
     }
   }
 
-  void _handleParentSorted() {
-    filter._handleParentSorted();
+  void _handleParentSorted(List<MediaItem> oldItems, MediaItemComparator oldComparator) {
+    filter._handleParentSorted(oldItems, oldComparator, parent._items, parent.comparator);
+    final List<MediaItem> localOldItms = List<MediaItem>.from(_items);
     _updateItems();
     _forEachChild((FilteredMediaItems items) {
-      items._handleParentSorted();
+      items._handleParentSorted(localOldItms, oldComparator);
     });
     _notifyStructureListeners();
   }
