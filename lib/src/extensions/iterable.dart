@@ -1,7 +1,16 @@
 import 'package:chicago/chicago.dart' show Span;
 
 extension IterableExtensions<T> on Iterable<T> {
+  /// Whether this collection has one and only one element.
   bool get isSingle => length == 1;
+
+  /// Creates a new lazy [Iterable] with any duplicate items removed.
+  ///
+  /// Duplicate items are determined by logical equality.
+  Iterable<T> removeDuplicates() {
+    final Set<T> seen = <T>{};
+    return where((T element) => seen.add(element));
+  }
 }
 
 extension IntInterableExtenions on Iterable<int> {

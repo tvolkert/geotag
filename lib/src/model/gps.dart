@@ -1,6 +1,7 @@
 import 'package:image/image.dart';
 import 'package:image/src/util/rational.dart'; // ignore: implementation_imports
 
+import '../extensions/double.dart';
 import 'exif.dart';
 
 class GpsCoordinates {
@@ -47,8 +48,18 @@ class GpsCoordinates {
     return '$latitudeValue$longitudeValue/';
   }
 
+  String toShortString() => '${latitude.toShortString()},${longitude.toShortString()}';
+
   @override
-  String toString() => '$latitude, $longitude';
+  int get hashCode => Object.hash(latitude, longitude);
+
+  @override
+  bool operator ==(Object other) {
+    return other is GpsCoordinates && latitude == other.latitude && longitude == other.longitude;
+  }
+
+  @override
+  String toString() => '$latitude,$longitude';
 }
 
 abstract base class GpsCoordinate {
@@ -88,8 +99,18 @@ abstract base class GpsCoordinate {
 
   IfdValue get ref => IfdValueAscii(_value >= 0 ? _refIfPositive : _refIfNegative);
 
+  String toShortString() => '${_value.toPrecision(4)}';
+
   @override
-  toString() => '$_value';
+  int get hashCode => _value.hashCode;
+
+  @override
+  bool operator ==(Object other) {
+    return runtimeType == other.runtimeType && _value == (other as GpsCoordinate)._value;
+  }
+
+  @override
+  String toString() => '$_value';
 }
 
 final class GpsLatitude extends GpsCoordinate {

@@ -41,6 +41,11 @@ enum MediaType {
 ///
 /// Listeners can register to be notified when properties of a media item
 /// change by calling [MediaBinding.addItemListener].
+///
+/// Since media items maintain references to their owner [MediaItems], which
+/// in turn maintain references to event listeners, media items should not be
+/// sent through an isolate's send port.
+//@vmIsolateUnsendable TODO: expose this annotation? It's used in Completer.
 class MediaItem {
   /// Creates a new [MediaItem] with no metadata.
   MediaItem._empty()
@@ -420,6 +425,10 @@ base class MediaItemsView {
 
   final List<MediaItem> _items;
 
+  /// A newly created copy of the list of [DbRow] objects that backs this
+  /// object's items.
+  DbResults get _rows => DbResults.from(_items.map<DbRow>((MediaItem item) => item._row));
+
   bool get isEmpty => _items.isEmpty;
 
   bool get isNotEmpty => _items.isNotEmpty;
@@ -557,7 +566,7 @@ abstract base class MediaItems extends MediaItemsView {
     final _WriteToDiskMessage message = _WriteToDiskMessage._(
       DatabaseBinding.instance.databaseFactory,
       FilesBinding.instance.fs,
-      localItems,
+      _rows,
     );
     final Stream<int> iter = Isolates.stream<_WriteToDiskMessage, int>(
       _writeToDiskWorker,
@@ -588,7 +597,7 @@ abstract base class MediaItems extends MediaItemsView {
     final _DeleteFilesMessage message = _DeleteFilesMessage._(
       DatabaseBinding.instance.databaseFactory,
       FilesBinding.instance.fs,
-      localItems,
+      _rows,
     );
     final Stream<int> iter = Isolates.stream<_DeleteFilesMessage, int>(
       _deleteFilesWorker,
@@ -619,7 +628,7 @@ abstract base class MediaItems extends MediaItemsView {
     final _ExportToFolderMessage message = _ExportToFolderMessage._(
       FilesBinding.instance.fs,
       folder,
-      List<MediaItem>.from(_items),
+      _rows,
     );
     final Stream<DbRow> iter = Isolates.stream<_ExportToFolderMessage, DbRow>(
       _exportToFolderWorker,
@@ -636,9 +645,9 @@ abstract base class MediaItems extends MediaItemsView {
   /// This runs in a separate isolate.
   static Stream<int> _writeToDiskWorker(_WriteToDiskMessage message) async* {
     final sqflite.Database db = await message.dbFactory();
-    for (int i = 0; i < message.items.length; i++) {
+    for (int i = 0; i < message.rows.length; i++) {
       try {
-        final MediaItem item = message.items[i];
+        final MediaItem item = MediaItem.fromDbRow(message.rows[i]);
         switch (item.type) {
           case MediaType.photo:
             final JpegFile jpeg = JpegFile(item.path, message.fs);
@@ -676,9 +685,9 @@ abstract base class MediaItems extends MediaItemsView {
     final sqflite.Database db = await message.dbFactory();
     // Traverse the list backwards so that our stream of indexes will be valid
     // even as we remove items from the list.
-    for (int i = message.items.length - 1; i >= 0; i--) {
+    for (int i = message.rows.length - 1; i >= 0; i--) {
       try {
-        final MediaItem item = message.items[i];
+        final MediaItem item = MediaItem.fromDbRow(message.rows[i]);
         message.fs.file(item.path).deleteSync();
         if (item.path != item.photoPath) {
           message.fs.file(item.photoPath).deleteSync();
@@ -695,7 +704,8 @@ abstract base class MediaItems extends MediaItemsView {
   static Stream<DbRow> _exportToFolderWorker(_ExportToFolderMessage message) async* {
     final Directory root = message.fs.directory(message.folder);
     assert(root.existsSync());
-    for (MediaItem item in message.items) {
+    for (final DbRow row in message.rows) {
+      final MediaItem item = MediaItem.fromDbRow(row);
       try {
         final int year = item.hasDateTime ? item.dateTime!.year : 0;
         final Directory parent = root
@@ -714,7 +724,7 @@ abstract base class MediaItems extends MediaItemsView {
         }
         // https://github.com/flutter/flutter/issues/140763
         await message.fs.file(path).copy(target.path);
-        yield item._row;
+        yield row;
       } catch (error, stack) {
         yield* Stream<DbRow>.error(error, stack);
       }
@@ -1143,27 +1153,27 @@ class _AddFilesMessage {
 }
 
 class _WriteToDiskMessage {
-  const _WriteToDiskMessage._(this.dbFactory, this.fs, this.items);
+  const _WriteToDiskMessage._(this.dbFactory, this.fs, this.rows);
 
   final DatabaseFactory dbFactory;
   final FileSystem fs;
-  final List<MediaItem> items;
+  final DbResults rows;
 }
 
 class _DeleteFilesMessage {
-  const _DeleteFilesMessage._(this.dbFactory, this.fs, this.items);
+  const _DeleteFilesMessage._(this.dbFactory, this.fs, this.rows);
 
   final DatabaseFactory dbFactory;
   final FileSystem fs;
-  final List<MediaItem> items;
+  final DbResults rows;
 }
 
 class _ExportToFolderMessage {
-  const _ExportToFolderMessage._(this.fs, this.folder, this.items);
+  const _ExportToFolderMessage._(this.fs, this.folder, this.rows);
 
   final FileSystem fs;
   final String folder;
-  final List<MediaItem> items;
+  final DbResults rows;
 }
 
 class MediaNotifier extends Object with ChangeNotifier {

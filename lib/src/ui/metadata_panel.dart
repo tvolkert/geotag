@@ -1,11 +1,16 @@
+// ignore_for_file: avoid_print
+
 import 'dart:async';
 
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:geotag/src/extensions/iterable.dart';
 import 'package:intl/intl.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../bindings/clock.dart';
 import '../extensions/date_time.dart';
+import '../extensions/double.dart';
 import '../model/gps.dart';
 import '../model/media.dart';
 import 'date_time_editor.dart';
@@ -22,6 +27,7 @@ class MetadataPanel extends StatefulWidget {
 class _MetadataPanelState extends State<MetadataPanel> {
   bool _isEditingEvent = false;
   bool _isEditingLatlng = false;
+  final Completer<void> _onMapLoaded = Completer<void>();
   late TextEditingController eventController;
   late TextEditingController latlngController;
   late FocusNode dateTimeFocusNode;
@@ -41,8 +47,8 @@ class _MetadataPanelState extends State<MetadataPanel> {
       eventController.text = item.event ?? '';
     } else {
       final String? sharedEvent = widget.items
-        .map<String?>((MediaItem item) => item.event)
-        .reduce((String? value, String? element) => value == element ? value : null);
+          .map<String?>((MediaItem item) => item.event)
+          .reduce((String? value, String? element) => value == element ? value : null);
       eventController.text = sharedEvent ?? '';
     }
     setState(() {});
@@ -51,36 +57,57 @@ class _MetadataPanelState extends State<MetadataPanel> {
   Future<void> _updateLatlngUiElements({bool firstRun = false}) async {
     if (widget.items.isEmpty) {
       latlngController.text = '';
+      await _loadMapCoordinates(<GpsCoordinates>[], firstRun);
     } else if (widget.items.isSingle) {
       final MediaItem item = widget.items.single;
-      String? currentUrl = await webViewController.currentUrl();
       if (item.hasLatlng) {
         final GpsCoordinates coords = item.coords!;
-        latlngController.text = '${coords.latitude}, ${coords.longitude}';
-        if (firstRun || currentUrl == null) {
-          webViewController.loadRequest(
-            Uri.parse('https://tvolkert.dev/map.html?initial=${coords.latitude},${coords.longitude}'),
-          );
-        } else {
-          webViewController.runJavaScript('window.rePin("${coords.latitude},${coords.longitude}")');
-        }
+        latlngController.text = coords.toString();
+        await _loadMapCoordinates(<GpsCoordinates>[coords], firstRun);
       } else {
         latlngController.text = '';
-        webViewController.loadRequest(Uri.parse('https://tvolkert.dev/map.html?initial=0,0'));
+        await _loadMapCoordinates(<GpsCoordinates>[], firstRun);
       }
     } else {
+      final Iterable<GpsCoordinates> coords = widget.items
+          .map<GpsCoordinates?>((MediaItem item) => item.coords)
+          .whereNotNull()
+          .removeDuplicates()
+          .toList();
       latlngController.text = '';
+      await _loadMapCoordinates(coords, firstRun);
     }
     setState(() {});
   }
 
+  Future<void> _loadMapCoordinates(Iterable<GpsCoordinates> coords, bool firstRun) async {
+    Uri url = Uri.https('tvolkert.dev', '/map.html');
+    String? coordsParam;
+    if (coords.isSingle) {
+      coordsParam = coords.single.toString();
+    } else if (coords.isNotEmpty) {
+      coordsParam = coords.map<String>((GpsCoordinates c) => c.toShortString()).join(';');
+    }
+    if (firstRun) {
+      if (coordsParam != null) {
+        url = url.replace(queryParameters: <String, String>{'initial': coordsParam});
+      }
+      webViewController.loadRequest(url);
+    } else {
+      if (!_onMapLoaded.isCompleted) {
+        await _onMapLoaded.future;
+      }
+      final String js = 'window.rePin(${coordsParam == null ? 'null' : '"$coordsParam"'})';
+      webViewController.runJavaScript(js);
+    }
+  }
+
   Future<void> _updateDateTime(MediaItem item, DateTime dateTime) async {
     item
-        ..dateTimeOriginal = dateTime
-        ..dateTimeDigitized = dateTime
-        ..isModified = true
-        ..lastModified = ClockBinding.instance.now()
-        ;
+      ..dateTimeOriginal = dateTime
+      ..dateTimeDigitized = dateTime
+      ..isModified = true
+      ..lastModified = ClockBinding.instance.now();
     await item.commit();
   }
 
@@ -120,6 +147,22 @@ class _MetadataPanelState extends State<MetadataPanel> {
     setIsEditingLatlng(FocusManager.instance.primaryFocus == latlngFocusNode);
   }
 
+  void _handlePostMessageReceived(JavaScriptMessage message) {
+    final List<String> parts = message.message.split(':');
+    switch (parts.first) {
+      case 'loaded':
+        assert(!_onMapLoaded.isCompleted);
+        _onMapLoaded.complete();
+      case 'latlng':
+        print(parts.last);
+        // TODO: Update coordinates of the selected items
+      case 'print':
+        print(parts.skip(1).join());
+      default:
+        print(message.message);
+    }
+  }
+
   void setIsEditingEvent(bool value) {
     if (value != _isEditingEvent) {
       _isEditingEvent = value;
@@ -140,19 +183,17 @@ class _MetadataPanelState extends State<MetadataPanel> {
 
   Future<void> _updateEvent(MediaItem item, String? event) async {
     item
-        ..event = event
-        ..isModified = true
-        ..lastModified = ClockBinding.instance.now()
-        ;
+      ..event = event
+      ..isModified = true
+      ..lastModified = ClockBinding.instance.now();
     await item.commit();
   }
 
   Future<void> _updateLatlng(MediaItem item, GpsCoordinates coords) async {
     item
-        ..latlng = coords.latlng
-        ..isModified = true
-        ..lastModified = ClockBinding.instance.now()
-        ;
+      ..latlng = coords.latlng
+      ..isModified = true
+      ..lastModified = ClockBinding.instance.now();
     await item.commit();
   }
 
@@ -233,11 +274,10 @@ class _MetadataPanelState extends State<MetadataPanel> {
     eventFocusNode = FocusNode();
     latlngFocusNode = FocusNode();
     FocusManager.instance.addListener(_handleFocusChanged);
-    _updateEventUiElement();
-    _updateLatlngUiElements(firstRun: true);
     webViewController = WebViewController()
       ..clearCache()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..addJavaScriptChannel('Geotag', onMessageReceived: _handlePostMessageReceived)
       ..setNavigationDelegate(
         NavigationDelegate(
           onUrlChange: (UrlChange change) {
@@ -247,15 +287,23 @@ class _MetadataPanelState extends State<MetadataPanel> {
             return NavigationDecision.navigate;
           },
         ),
-      )
-      ;
+      );
+    _updateEventUiElement();
+    _updateLatlngUiElements(firstRun: true);
   }
 
   @override
   void didUpdateWidget(covariant MetadataPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
     _updateEventUiElement();
-    _updateLatlngUiElements(firstRun: false);
+    _updateLatlngUiElements();
+  }
+
+  @override
+  void reassemble() {
+    super.reassemble();
+    webViewController.clearCache();
+    webViewController.clearLocalStorage();
   }
 
   @override
@@ -338,9 +386,9 @@ class _MetadataPanelState extends State<MetadataPanel> {
           child: widget.items.isSingle
               ? SelectableText(widget.items.single.path.split('/').last)
               : Text(
-                '${widget.items.length} items',
-                style: const TextStyle(fontStyle: FontStyle.italic),
-              ),
+                  '${widget.items.length} items',
+                  style: const TextStyle(fontStyle: FontStyle.italic),
+                ),
         ),
         MetadataField(
           icon: Icons.local_activity,
@@ -361,7 +409,10 @@ class _MetadataPanelState extends State<MetadataPanel> {
           ),
         ),
         Expanded(
-          child: WebViewWidget(controller: webViewController),
+          child: AspectRatio(
+            aspectRatio: 1.65,
+            child: WebViewWidget(controller: webViewController),
+          ),
         ),
       ],
     );
