@@ -10,7 +10,6 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import '../bindings/clock.dart';
 import '../extensions/date_time.dart';
-import '../extensions/double.dart';
 import '../model/gps.dart';
 import '../model/media.dart';
 import 'date_time_editor.dart';
