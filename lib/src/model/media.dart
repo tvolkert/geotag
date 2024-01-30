@@ -521,11 +521,18 @@ abstract base class MediaItems extends MediaItemsView {
   /// Visits each child media items list that has been created and not yet
   /// garbage collected.
   void _forEachChild(void Function(FilteredMediaItems items) visitor) {
+    List<_FilteredItemsWeakRef>? cleared;
     for (_FilteredItemsWeakRef reference in _children) {
       if (reference.isCleared) {
-        reference.unlink();
+        cleared ??= <_FilteredItemsWeakRef>[];
+        cleared.add(reference);
       } else {
         visitor(reference.target);
+      }
+    }
+    if (cleared != null) {
+      for (_FilteredItemsWeakRef reference in cleared) {
+        reference.unlink();
       }
     }
   }
