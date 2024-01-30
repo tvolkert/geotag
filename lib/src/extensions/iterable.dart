@@ -7,10 +7,7 @@ extension IterableExtensions<T> on Iterable<T> {
   /// Creates a new lazy [Iterable] with any duplicate items removed.
   ///
   /// Duplicate items are determined by logical equality.
-  Iterable<T> removeDuplicates() {
-    final Set<T> seen = <T>{};
-    return where((T element) => seen.add(element));
-  }
+  Iterable<T> removeDuplicates() => RemoveDuplicatesIterable<T>(this);
 }
 
 extension IntInterableExtenions on Iterable<int> {
@@ -29,4 +26,33 @@ extension IntInterableExtenions on Iterable<int> {
     }
     return result;
   }
+}
+
+class RemoveDuplicatesIterable<T> extends Iterable<T> {
+  RemoveDuplicatesIterable(this._iterable);
+
+  final Iterable<T> _iterable;
+
+  @override
+  Iterator<T> get iterator => RemoveDuplicatesIterator(_iterable.iterator);
+}
+
+class RemoveDuplicatesIterator<T> implements Iterator<T> {
+  RemoveDuplicatesIterator(this._iterator);
+
+  final Iterator<T> _iterator;
+  final Set<T> _seen = <T>{};
+
+  @override
+  bool moveNext() {
+    while (_iterator.moveNext()) {
+      if (_seen.add(_iterator.current)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  @override
+  T get current => _iterator.current;
 }
