@@ -25,10 +25,24 @@ class GeotagAppBar extends StatefulWidget implements PreferredSizeWidget {
 
 class _GeotagAppBarState extends State<GeotagAppBar> {
   double? _taskProgress;
+  late bool _modifiedItemsExist;
+  late bool _itemsIsNotEmpty;
 
   void _handleTasksChanged() {
     setState(() {
       _taskProgress = TaskBinding.instance.progress;
+    });
+  }
+
+  void _handleItemMetadataChanged() {
+    setState(() {
+      _modifiedItemsExist = MediaBinding.instance.items.containsModified;
+    });
+  }
+
+  void _handleItemsChanged() {
+    setState(() {
+      _itemsIsNotEmpty = MediaBinding.instance.items.isNotEmpty;
     });
   }
 
@@ -48,10 +62,6 @@ class _GeotagAppBarState extends State<GeotagAppBar> {
       final Iterable<String> paths = result.files.map<String>((PlatformFile file) => file.path!);
       await MediaBinding.instance.items.addFiles(paths).listenAndWait((void _) {
         TaskBinding.instance.onTaskCompleted();
-        if (mounted) {
-          // TODO: Have _containsModified and _isEmpty state variables
-          setState(() {});
-        }
       }, onError: (Object error, StackTrace stack) {
         print('$error\n$stack');
         TaskBinding.instance.onTaskCompleted();
@@ -94,10 +104,16 @@ class _GeotagAppBarState extends State<GeotagAppBar> {
   void initState() {
     super.initState();
     TaskBinding.instance.addTaskListener(_handleTasksChanged);
+    MediaBinding.instance.items.addMetadataListener(_handleItemMetadataChanged);
+    MediaBinding.instance.items.addStructureListener(_handleItemsChanged);
+    _modifiedItemsExist = MediaBinding.instance.items.containsModified;
+    _itemsIsNotEmpty = MediaBinding.instance.items.isNotEmpty;
   }
 
   @override
   void dispose() {
+    MediaBinding.instance.items.removeStructureListener(_handleItemsChanged);
+    MediaBinding.instance.items.removeMetadataListener(_handleItemMetadataChanged);
     TaskBinding.instance.removeTaskListener(_handleTasksChanged);
     super.dispose();
   }
@@ -124,7 +140,6 @@ class _GeotagAppBarState extends State<GeotagAppBar> {
   Widget build(BuildContext context) {
     // TODO: Receive notifications of items changed and rebuild.
     // e.g. metadata edits don't force a rebuild of `items.containsModified`
-    final RootMediaItems items = MediaBinding.instance.items;
     return AppBar(
       backgroundColor: Colors.black,
       leading: _getLeading(),
@@ -140,22 +155,22 @@ class _GeotagAppBarState extends State<GeotagAppBar> {
         IconButton(
           icon: Icon(
             Icons.save,
-            color: _taskProgress == null && items.containsModified
+            color: _taskProgress == null && _modifiedItemsExist
                 ? Colors.white
                 : null,
           ),
           tooltip: 'Save all edits',
-          onPressed: _taskProgress == null && items.containsModified
+          onPressed: _taskProgress == null && _modifiedItemsExist
               ? _writeEditsToDisk
               : null,
         ),
         IconButton(
           icon: Icon(
             Icons.drive_folder_upload,
-            color: _taskProgress == null && items.isNotEmpty ? Colors.white : null,
+            color: _taskProgress == null && _itemsIsNotEmpty ? Colors.white : null,
           ),
           tooltip: 'Export to folder',
-          onPressed: _taskProgress == null && items.isNotEmpty ? _exportToFolder : null,
+          onPressed: _taskProgress == null && _itemsIsNotEmpty ? _exportToFolder : null,
         ),
       ],
     );
