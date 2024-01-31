@@ -1,5 +1,5 @@
 async function initMap() {
-  const { LatLngBounds } = await google.maps.importLibrary("core")
+  const { LatLng, LatLngBounds } = await google.maps.importLibrary("core")
   const { Map, InfoWindow } = await google.maps.importLibrary("maps");
   const { AdvancedMarkerElement, PinElement } = await google.maps.importLibrary("marker");
   const { SearchBox } = await google.maps.importLibrary("places");
@@ -14,7 +14,10 @@ async function initMap() {
     for (let i in entries) {
       let coords = entries[i];
       var splitCoords = coords.split(",");
-      let position = { lat: parseFloat(splitCoords[0]), lng: parseFloat(splitCoords[1]) };
+      let position = new LatLng({
+        lat: parseFloat(splitCoords[0]),
+        lng: parseFloat(splitCoords[1]),
+      });
       positions.push(position);
     }
     return positions;
@@ -28,30 +31,90 @@ async function initMap() {
     return bounds;
   }
 
-  function smoothZoom(map, target, current) {
-    if (current === undefined) {
-      current = map.getZoom();
+  function getBoundsZoomLevel(bounds) {
+    var WORLD_DIM = { height: 256, width: 256 };
+    var ZOOM_MAX = 21;
+
+    function latRad(lat) {
+      var sin = Math.sin(lat * Math.PI / 180);
+      var radX2 = Math.log((1 + sin) / (1 - sin)) / 2;
+      return Math.max(Math.min(radX2, Math.PI), -Math.PI) / 2;
     }
-    if (current >= target) {
-      return;
+
+    function zoom(mapPx, worldPx, fraction) {
+      // return Math.floor(Math.log(mapPx / worldPx / fraction) / Math.LN2);
+      return Math.log(mapPx / worldPx / fraction) / Math.LN2;
     }
-    let targetCeiling = Math.min(target, 20);
-    if (targetCeiling - current > 7) {
-      // Too far to animate; it wouldn't look good.
-      let jumpTarget = targetCeiling - 3;
-      map.setZoom(jumpTarget);
-      smoothZoom(map, target, jumpTarget);
-      return;
+
+    var ne = bounds.getNorthEast();
+    var sw = bounds.getSouthWest();
+
+    var latFraction = (latRad(ne.lat()) - latRad(sw.lat())) / Math.PI;
+
+    var lngDiff = ne.lng() - sw.lng();
+    var lngFraction = ((lngDiff < 0) ? (lngDiff + 360) : lngDiff) / 360;
+
+    let offsetWidth = mapElement.offsetWidth;
+    if (offsetWidth == 0) {
+      offsetWidth = 256;
     }
-    else {
-      var lsnr = google.maps.event.addListener(map, 'zoom_changed', function(event) {
-        google.maps.event.removeListener(lsnr);
-        smoothZoom(map, target, current + 1);
-      });
-      setTimeout(function() {
-        map.setZoom(current);
-      }, 120);
+    let offsetHeight = mapElement.offsetHeight;
+    if (offsetHeight == 0) {
+      offsetHeight = 256;
     }
+    var latZoom = zoom(offsetHeight, WORLD_DIM.height, latFraction);
+    var lngZoom = zoom(offsetWidth, WORLD_DIM.width, lngFraction);
+
+    return Math.min(latZoom, lngZoom, ZOOM_MAX);
+  }
+
+  function lerpDouble(a, b, t) {
+    if (a == b || (isNaN(a) && isNaN(b))) {
+      return a;
+    }
+    return a * (1.0 - t) + b * t;
+  }
+
+  function lerpBounds(a, b, t) {
+    if (a === b) {
+      return a;
+    }
+    return new LatLngBounds({
+      east: lerpDouble(a.getNorthEast().lng(), b.getNorthEast().lng(), t),
+      north: lerpDouble(a.getNorthEast().lat(), b.getNorthEast().lat(), t),
+      south: lerpDouble(a.getSouthWest().lat(), b.getSouthWest().lat(), t),
+      west: lerpDouble(a.getSouthWest().lng(), b.getSouthWest().lng(), t),
+    });
+  }
+
+  function lerpPosition(a, b, t) {
+    if (a === b) {
+      return a;
+    }
+    return new LatLng({
+      lat: lerpDouble(a.lat(), b.lat(), t),
+      lng: lerpDouble(a.lng(), b.lng(), t),
+    });
+  }
+
+  function easeOutSine(x) {
+    return Math.sin((x * Math.PI) / 2);
+  }
+
+  function easeInSine(x) {
+    return 1 - Math.cos((x * Math.PI) / 2);
+  }
+
+  function easeInOutSine(x) {
+    return -(Math.cos(Math.PI * x) - 1) / 2;
+  }
+
+  function easeOutCubic(x) {
+    return 1 - Math.pow(1 - x, 3);
+  }
+
+  function easeInCubic(x) {
+    return x * x * x;
   }
 
   const urlParams = new URLSearchParams(window.location.search);
@@ -67,14 +130,51 @@ async function initMap() {
   const bounds = getBounds(initialPositions);
   const map = new Map(mapElement, {
     center: bounds.getCenter(),
-    zoom: 19,
+    zoom: getBoundsZoomLevel(bounds),
     disableDefaultUI: true,
     zoomControl: true,
     mapTypeId: 'satellite',
     // scaleControl: true,
     mapId: 'b56906ff9307a9d8',
   });
-  map.fitBounds(bounds);
+  window.map = map; // TODO: remove
+
+  let timeoutId = null;
+  function animateToBounds(targetBounds) {
+    if (timeoutId != null) {
+      window.clearTimeout(timeoutId);
+      timeoutId = null;
+    }
+
+    let start = new Date().getTime();
+    const sourceCenter = map.getCenter();
+    const sourceZoom = map.getZoom();
+    const targetCenter = targetBounds.getCenter();
+    const targetZoom = getBoundsZoomLevel(targetBounds) - 0.75;
+    const duration = 1200;
+    const delay = 25;
+    let easeZoom = targetZoom > sourceZoom ? easeInCubic : easeOutCubic;
+    let easeCenter = targetZoom > sourceZoom ? easeOutSine : easeInOutSine;
+
+    function tick() {
+      let now = new Date().getTime();
+      let diff = now - start;
+      let t = Math.min(diff / duration, 1);
+      let center = lerpPosition(sourceCenter, targetCenter, easeCenter(t));
+      let zoom = lerpDouble(sourceZoom, targetZoom, easeZoom(t));
+      map.moveCamera({
+        center: center,
+        zoom: zoom,
+      });
+      if (t < 1) {
+        timeoutId = window.setTimeout(tick, delay);
+      } else {
+        timeoutId = null;
+      }
+    }
+
+    timeoutId = window.setTimeout(tick, delay);
+  }
 
   let draggableMarker = null;
   function placeSinglePin(position) {
@@ -98,11 +198,14 @@ async function initMap() {
     }
 
     draggableMarker.position = position;
-    map.panTo(position);
-    window.setTimeout(function() {
-      smoothZoom(map, 30);
-    }, 500);
-    window.map = map;
+    if (map.getBounds() === undefined) {
+      map.setCenter(position);
+      let bounds = getBounds([position]);
+      let zoom = getBoundsZoomLevel(bounds);
+      map.setZoom(zoom);
+    } else {
+      animateToBounds(getBounds([position]));
+    }
   }
 
   function clearSinglePin() {
@@ -139,7 +242,13 @@ async function initMap() {
       multipleMarkers.push(marker);
     }
     const bounds = getBounds(positions);
-    map.fitBounds(bounds);
+    const zoom = getBoundsZoomLevel(bounds);
+    if (map.getBounds() === undefined) {
+      map.setCenter(bounds.getCenter());
+      map.setZoom(zoom);
+    } else {
+      animateToBounds(bounds);
+    }
     // new MarkerClusterer({ multipleMarkers, map });
   }
 
