@@ -959,17 +959,21 @@ abstract base class MediaItemFilter {
 
   Iterable<MediaItem> apply(List<MediaItem> source);
 
+  @protected
   @mustCallSuper
-  void _handleParentItemInsertedAt(int index) {}
+  void handleParentItemInsertedAt(int index) {}
 
+  @protected
   @mustCallSuper
-  void _handleParentItemUpdated(int oldIndex, int newIndex, MediaItem beforeUpdate) {}
+  void handleParentItemUpdated(int oldIndex, int newIndex, MediaItem beforeUpdate) {}
 
+  @protected
   @mustCallSuper
-  void _handleParentItemRemovedAt(int index, MediaItem removed) {}
+  void handleParentItemRemovedAt(int index, MediaItem removed) {}
 
+  @protected
   @mustCallSuper
-  void _handleParentSorted(List<MediaItem> oldItems, MediaItemComparator oldComparator,
+  void handleParentSorted(List<MediaItem> oldItems, MediaItemComparator oldComparator,
       List<MediaItem> items, MediaItemComparator comparator) {}
 }
 
@@ -1000,8 +1004,8 @@ final class IndexedMediaItemFilter extends MediaItemFilter {
   }
 
   @override
-  void _handleParentItemInsertedAt(int index) {
-    super._handleParentItemInsertedAt(index);
+  void handleParentItemInsertedAt(int index) {
+    super.handleParentItemInsertedAt(index);
     for (int i = 0; i < _indexes.length; i++) {
       final int localIndex = _indexes[i];
       if (localIndex >= index) {
@@ -1011,8 +1015,8 @@ final class IndexedMediaItemFilter extends MediaItemFilter {
   }
 
   @override
-  void _handleParentItemUpdated(int oldIndex, int newIndex, MediaItem beforeUpdate) {
-    super._handleParentItemUpdated(oldIndex, newIndex, beforeUpdate);
+  void handleParentItemUpdated(int oldIndex, int newIndex, MediaItem beforeUpdate) {
+    super.handleParentItemUpdated(oldIndex, newIndex, beforeUpdate);
     for (int i = 0; i < _indexes.length; i++) {
       final int localIndex = _indexes[i];
       if (localIndex == oldIndex) {
@@ -1023,11 +1027,14 @@ final class IndexedMediaItemFilter extends MediaItemFilter {
         _indexes[i] = localIndex + 1;
       }
     }
+    // Indexes may be out of order now. It's important we keep them sorted to
+    // match the sort order dictated by the root comparator.
+    _indexes.sort();
   }
 
   @override
-  void _handleParentItemRemovedAt(int index, MediaItem removed) {
-    super._handleParentItemRemovedAt(index, removed);
+  void handleParentItemRemovedAt(int index, MediaItem removed) {
+    super.handleParentItemRemovedAt(index, removed);
     for (int i = _indexes.length - 1; i >= 0; i--) {
       final int localIndex = _indexes[i];
       if (localIndex == index) {
@@ -1039,15 +1046,18 @@ final class IndexedMediaItemFilter extends MediaItemFilter {
   }
 
   @override
-  void _handleParentSorted(List<MediaItem> oldItems, MediaItemComparator oldComparator,
+  void handleParentSorted(List<MediaItem> oldItems, MediaItemComparator oldComparator,
       List<MediaItem> items, MediaItemComparator comparator) {
-    super._handleParentSorted(oldItems, oldComparator, items, comparator);
+    super.handleParentSorted(oldItems, oldComparator, items, comparator);
     for (int i = 0; i < _indexes.length; i++) {
       final int localIndex = _indexes[i];
       final MediaItem item = oldItems[localIndex];
       _indexes[i] = chicago.binarySearch<MediaItem>(items, item, compare: comparator.compare);
       assert(_indexes[i] >= 0);
     }
+    // Indexes may be out of order now. It's important we keep them sorted to
+    // match the sort order dictated by the root comparator.
+    _indexes.sort();
   }
 }
 
@@ -1094,7 +1104,7 @@ final class FilteredMediaItems extends MediaItems {
   set comparator(MediaItemComparator value) => parent.comparator = value;
 
   void _handleParentItemInsertedAt(int index) {
-    filter._handleParentItemInsertedAt(index);
+    filter.handleParentItemInsertedAt(index);
     _updateItems();
     final int localIndex = indexOf(parent[index]);
     if (localIndex >= 0) {
@@ -1106,7 +1116,7 @@ final class FilteredMediaItems extends MediaItems {
   }
 
   void _handleParentItemUpdated(int oldIndex, int newIndex, MediaItem beforeUpdate) {
-    filter._handleParentItemUpdated(oldIndex, newIndex, beforeUpdate);
+    filter.handleParentItemUpdated(oldIndex, newIndex, beforeUpdate);
     final int localOldIndex = indexOf(beforeUpdate);
     _updateItems();
     final int localNewIndex = indexOf(parent[newIndex]);
@@ -1119,7 +1129,7 @@ final class FilteredMediaItems extends MediaItems {
   }
 
   void _handleParentItemRemovedAt(int index, MediaItem removed) {
-    filter._handleParentItemRemovedAt(index, removed);
+    filter.handleParentItemRemovedAt(index, removed);
     final int localIndex = indexOf(removed);
     _updateItems();
     assert(indexOf(removed) == -1);
@@ -1132,7 +1142,7 @@ final class FilteredMediaItems extends MediaItems {
   }
 
   void _handleParentSorted(List<MediaItem> oldItems, MediaItemComparator oldComparator) {
-    filter._handleParentSorted(oldItems, oldComparator, parent._items, parent.comparator);
+    filter.handleParentSorted(oldItems, oldComparator, parent._items, parent.comparator);
     final List<MediaItem> localOldItms = List<MediaItem>.from(_items);
     _updateItems();
     _forEachChild((FilteredMediaItems items) {

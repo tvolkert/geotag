@@ -480,4 +480,43 @@ Future<void> main() async {
     expect(filter.indexes, <int>[0]);
     expect(selected.first.id, id);
   });
+
+  testGeotag('Indexed->Predicate filter updates and notifies when comparator is changed and relative index order changes', (WidgetTester tester) async {
+    final RootMediaItems root = await tester._populateItems();
+    root.comparator = const ByDate(Ascending());
+    final IndexedMediaItemFilter filter = IndexedMediaItemFilter(<int>[2, 3]);
+    final MediaItems selected = root.where(filter);
+    final MediaItems noGeo = selected.where(const PredicateMediaItemFilter(_needsGeo));
+    bool structureChanged = false;
+    noGeo.addStructureListener(() => structureChanged = true);
+    expect(noGeo.length, 1);
+    final int id = noGeo.first.id;
+    root.comparator = const ByDate(Descending());
+    expect(noGeo.length, 1);
+    expect(structureChanged, isTrue);
+    expect(filter.indexes, <int>[1, 2]);
+    expect(noGeo.first.id, id);
+    root[2].event = 'test event';
+    await root[2].commit();
+  });
+
+  testGeotag('Indexed->Predicate filter updates and notifies when selected item is updated and moves and relative index order changes', (WidgetTester tester) async {
+    final RootMediaItems root = await tester._populateItems();
+    root.comparator = const ByDate(Ascending());
+    final IndexedMediaItemFilter filter = IndexedMediaItemFilter(<int>[0, 1]);
+    final MediaItems selected = root.where(filter);
+    final MediaItems noGeo = selected.where(const PredicateMediaItemFilter(_needsGeo));
+    bool structureChanged = false;
+    noGeo.addStructureListener(() => structureChanged = true);
+    expect(noGeo.length, 2);
+    final int blackId = noGeo[0].id;
+    final int whiteId = noGeo[1].id;
+    root[0].dateTimeOriginal = tester.binding.clock.now();
+    await root[0].commit();
+    expect(noGeo.length, 2);
+    expect(structureChanged, isTrue);
+    expect(filter.indexes, <int>[0, 2]);
+    expect(noGeo[0].id, whiteId);
+    expect(noGeo[1].id, blackId);
+  });
 }
