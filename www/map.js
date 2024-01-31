@@ -140,17 +140,25 @@ async function initMap() {
   window.map = map; // TODO: remove
 
   let timeoutId = null;
+  let animatingToCenter = null;
   function animateToBounds(targetBounds) {
-    if (timeoutId != null) {
-      window.clearTimeout(timeoutId);
-      timeoutId = null;
-    }
-
     let start = new Date().getTime();
     const sourceCenter = map.getCenter();
     const sourceZoom = map.getZoom();
     const targetCenter = targetBounds.getCenter();
     const targetZoom = getBoundsZoomLevel(targetBounds) - 0.75;
+
+    if (timeoutId != null) {
+      if (targetCenter.lat() == animatingToCenter.lat() && targetCenter.lng() == animatingToCenter.lng()) {
+        // Leave the existing animation alone
+        return;
+      } else {
+        window.clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    }
+    animatingToCenter = targetCenter;
+
     const duration = 1200;
     const delay = 25;
     let easeZoom = targetZoom > sourceZoom ? easeInCubic : easeOutCubic;
@@ -170,6 +178,7 @@ async function initMap() {
         timeoutId = window.setTimeout(tick, delay);
       } else {
         timeoutId = null;
+        animatingToCenter = null;
       }
     }
 
