@@ -26,6 +26,20 @@ Future<void> main() async {
     expect(find.byType(Thumbnail), findsNWidgets(images.length));
   });
 
+  testGeotag('ThumbnailList produces thumbnails when items are added to root', (WidgetTester tester) async {
+    final ImageReferences images = tester.loadImages();
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: ThumbnailList(),
+      ),
+    );
+    expect(find.byType(Thumbnail), findsNothing);
+
+    await MediaBinding.instance.items.addFiles(images.paths).drain<void>();
+    await tester.pump();
+    expect(find.byType(Thumbnail), findsNWidgets(images.length));
+  });
+
   testGeotag('filter by missing date works', (WidgetTester tester) async {
     final ImageReferences images = tester.loadImages();
     await MediaBinding.instance.items.addFiles(images.paths).drain<void>();
