@@ -183,7 +183,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
   }
 
   void _handleDeleteSelectedItems() async {
-    if (await ConfirmDeleteFilesDialog.show(context)) {
+    if (await ConfirmDeleteFilesDialog.confirmDeleteFiles(context)) {
       _deleteItems(_selectionController.selectedItems.toList());
     }
   }

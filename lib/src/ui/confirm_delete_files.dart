@@ -1,12 +1,21 @@
 import 'package:flutter/material.dart';
 
 class ConfirmDeleteFilesDialog extends StatelessWidget {
-  const ConfirmDeleteFilesDialog({super.key});
+  const ConfirmDeleteFilesDialog({
+    super.key,
+    required this.message,
+  });
 
-  static Future<bool> show(BuildContext context) async {
+  final String message;
+
+  static Future<bool> confirmDeleteFiles(BuildContext context) async {
     final bool? confirmed = await showModalBottomSheet<bool>(
       context: context,
-      builder: (BuildContext context) => const ConfirmDeleteFilesDialog(),
+      builder: (BuildContext context) {
+        return const ConfirmDeleteFilesDialog(
+          message: 'Are you sure you wan to delete the selected files?',
+        );
+      },
     );
     return confirmed ?? false;
   }
@@ -26,12 +35,12 @@ class ConfirmDeleteFilesDialog extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.max,
           children: <Widget>[
-            const Expanded(
+            Expanded(
               flex: 1,
               child: Center(
                 child: Text(
-                  'Are you sure you wan to delete the selected files?',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  message,
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
               ),
             ),
