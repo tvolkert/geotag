@@ -8,14 +8,29 @@ class ConfirmationDialog extends StatelessWidget {
 
   final String message;
 
-  static Future<bool> confirmDeleteFiles(BuildContext context) async {
+  static Future<bool> confirmDeleteFiles(BuildContext context) {
+    return _show(context, 'Are you sure you want to delete the selected files?');
+  }
+
+  static Future<bool> confirmExportOneItem(BuildContext context) {
+    return _show(
+      context,
+      'You only have one item selected. Are you sure you want to export just that one item?',
+    );
+  }
+
+  static Future<bool> confirmExportUnsavedItems(BuildContext context) {
+    return _show(
+      context,
+      'One or more of the selected items has unsaved changes. Are you sure you '
+      'want to export these items without saving changes first?',
+    );
+  }
+
+  static Future<bool> _show(BuildContext context, String message) async {
     final bool? confirmed = await showModalBottomSheet<bool>(
       context: context,
-      builder: (BuildContext context) {
-        return const ConfirmationDialog(
-          message: 'Are you sure you wan to delete the selected files?',
-        );
-      },
+      builder: (BuildContext context) => ConfirmationDialog(message: message),
     );
     return confirmed ?? false;
   }
@@ -37,10 +52,14 @@ class ConfirmationDialog extends StatelessWidget {
           children: <Widget>[
             Expanded(
               flex: 1,
-              child: Center(
-                child: Text(
-                  message,
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 40),
+                child: Center(
+                  child: Text(
+                    message,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
                 ),
               ),
             ),

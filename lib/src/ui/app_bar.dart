@@ -11,6 +11,7 @@ import '../extensions/stream.dart';
 import '../model/image.dart';
 import '../model/media.dart';
 import '../model/video.dart';
+import 'confirmation_dialog.dart';
 import 'home.dart';
 
 class GeotagAppBar extends StatefulWidget implements PreferredSizeWidget {
@@ -83,8 +84,19 @@ class _GeotagAppBarState extends State<GeotagAppBar> {
   }
 
   Future<void> _exportToFolder() async {
-    // TODO: confirm if the user only wants to export 1 item if only 1 is selected
     final MediaItems items = GeotagHome.of(context).featuredItems;
+    if (items.containsModified && !await ConfirmationDialog.confirmExportUnsavedItems(context)) {
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    if (items.length == 1 && !await ConfirmationDialog.confirmExportOneItem(context)) {
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
     String? path = await FilePicker.platform.getDirectoryPath(
       dialogTitle: 'Export to folder',
       lockParentWindow: true,
