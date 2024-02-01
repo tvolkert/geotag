@@ -36,6 +36,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
   late final FocusNode _focusNode;
   final ScrollToVisibleController _scrollToVisibleController = ScrollToVisibleController();
   final ReentrantDetector _jumpToScrollCheck = ReentrantDetector();
+  late IndexedMediaItemFilter _selectionFilter;
   MediaItem? _selectedItem;
   bool _showOnlyMissingDate = false;
   bool _showOnlyMissingGeotag = false;
@@ -52,7 +53,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
 
   static bool _itemIsMissingEvent(MediaItem item) => !item.hasEvent;
 
-  void _updateItems() {
+  void _updateItems({bool dispose = true}) {
     MediaItems items = MediaBinding.instance.items;
     if (_showOnlyMissingDate) {
       items = items.where(_filterByDate);
@@ -75,8 +76,34 @@ class _ThumbnailListState extends State<ThumbnailList> {
 
     // It's important that we update the selection *after* [_items] since
     // [_handleSelectionChanged] resolves the selection against the items.
+    if (dispose) {
+      _items.dispose();
+    }
     _items = items;
     _selectionController.selectedRanges = newSelectedItems.toRanges();
+  }
+
+  void _updateSelectedItems() {
+    _selectionFilter.removeListener(_handleFilteredIndexesChanged);
+    _selectionFilter = IndexedMediaItemFilter(_selectionController.selectedItems);
+    _selectionFilter.addListener(_handleFilteredIndexesChanged);
+    _selectedItem = selectedIndex == null ? null : _items[selectedIndex!];
+    final MediaItems selectedItems = _items.where(_selectionFilter);
+    GeotagHome.of(context).featuredItems = selectedItems;
+  }
+
+  void _handleFilteredIndexesChanged() {
+    setState(() {
+      _selectionController.removeListener(_updateSelectedItems);
+      try {
+        _selectionController.clearSelection();
+        for (int i in _selectionFilter.indexes) {
+          _selectionController.addSelectedIndex(i);
+        }
+      } finally {
+        _selectionController.addListener(_updateSelectedItems);
+      }
+    });
   }
 
   void _handleItemCollectionChanged() {
@@ -97,14 +124,6 @@ class _ThumbnailListState extends State<ThumbnailList> {
         }
       }
     });
-  }
-
-  void _handleSelectionChanged() {
-    _selectedItem = selectedIndex == null ? null : _items[selectedIndex!];
-    final MediaItems selected = _items.where(
-      IndexedMediaItemFilter(_selectionController.selectedItems),
-    );
-    GeotagHome.of(context).featuredItems = selected;
   }
 
   void _handleFilterByDate() {
@@ -279,17 +298,21 @@ class _ThumbnailListState extends State<ThumbnailList> {
     super.initState();
     _scrollController = ScrollController();
     _selectionController = ListViewSelectionController(selectMode: SelectMode.multi);
-    _selectionController.addListener(_handleSelectionChanged);
+    _selectionController.addListener(_updateSelectedItems);
     _focusNode = FocusNode();
     MediaBinding.instance.items.addStructureListener(_handleItemCollectionChanged);
-    _updateItems();
+    _updateItems(dispose: false);
+    _selectionFilter = IndexedMediaItemFilter(_selectionController.selectedItems);
+    _selectionFilter.addListener(_handleFilteredIndexesChanged);
   }
 
   @override
   void dispose() {
+    _selectionFilter.removeListener(_handleFilteredIndexesChanged);
+    _selectionFilter.dispose();
     MediaBinding.instance.items.removeStructureListener(_handleItemCollectionChanged);
     _focusNode.dispose();
-    _selectionController.removeListener(_handleSelectionChanged);
+    _selectionController.removeListener(_updateSelectedItems);
     _selectionController.dispose();
     _scrollController.dispose();
     super.dispose();
