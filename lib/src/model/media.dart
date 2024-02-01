@@ -646,8 +646,8 @@ abstract base class MediaItems extends MediaItemsView {
   static Stream<int> _writeToDiskWorker(_WriteToDiskMessage message) async* {
     final sqflite.Database db = await message.dbFactory();
     for (int i = 0; i < message.rows.length; i++) {
+      final MediaItem item = MediaItem.fromDbRow(message.rows[i]);
       try {
-        final MediaItem item = MediaItem.fromDbRow(message.rows[i]);
         switch (item.type) {
           case MediaType.photo:
             final JpegFile jpeg = JpegFile(item.path, message.fs);
@@ -675,7 +675,7 @@ abstract base class MediaItems extends MediaItemsView {
         await item._writePendingEditsToDb(db);
         yield i;
       } catch (error, stack) {
-        yield* Stream<int>.error(error, stack);
+        yield* Stream<int>.error(WrappedError(error, 'While processing ${item.path}}'), stack);
       }
     }
   }
@@ -686,8 +686,8 @@ abstract base class MediaItems extends MediaItemsView {
     // Traverse the list backwards so that our stream of indexes will be valid
     // even as we remove items from the list.
     for (int i = message.rows.length - 1; i >= 0; i--) {
+      final MediaItem item = MediaItem.fromDbRow(message.rows[i]);
       try {
-        final MediaItem item = MediaItem.fromDbRow(message.rows[i]);
         message.fs.file(item.path).deleteSync();
         if (item.path != item.photoPath) {
           message.fs.file(item.photoPath).deleteSync();
@@ -695,7 +695,7 @@ abstract base class MediaItems extends MediaItemsView {
         await db.delete('MEDIA', where: 'PATH = ?', whereArgs: [item.path]);
         yield i;
       } catch (error, stack) {
-        yield* Stream<int>.error(error, stack);
+        yield* Stream<int>.error(WrappedError(error, 'While processing ${item.path}}'), stack);
       }
     }
   }
@@ -726,7 +726,7 @@ abstract base class MediaItems extends MediaItemsView {
         await message.fs.file(path).copy(target.path);
         yield row;
       } catch (error, stack) {
-        yield* Stream<DbRow>.error(error, stack);
+        yield* Stream<DbRow>.error(WrappedError(error, 'While processing ${item.path}}'), stack);
       }
     }
   }
@@ -948,7 +948,7 @@ final class RootMediaItems extends MediaItems {
         if (chrootFs.file(path).existsSync()) {
           chrootFs.file(path).deleteSync();
         }
-        yield* Stream<DbRow>.error(error, stack);
+        yield* Stream<DbRow>.error(WrappedError(error, 'While processing $path'), stack);
       }
     }
   }

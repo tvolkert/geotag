@@ -12,3 +12,13 @@ class Predicates {
     return (T value) => p1(value) || p2(value);
   }
 }
+
+class WrappedError extends Error {
+  WrappedError(this.error, this.message);
+
+  final String message;
+  final Object error;
+
+  @override
+  String toString() => '$message: $error';
+}
