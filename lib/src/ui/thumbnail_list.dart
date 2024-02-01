@@ -102,8 +102,10 @@ class _ThumbnailListState extends State<ThumbnailList> {
 
     // It's important that we update the selection *after* [_items] since
     // [_handleSelectionChanged] resolves the selection against the items.
-    _items = items;
-    _selectionController.selectedRanges = newSelectedItems.toRanges();
+    setState(() {
+      _items = items;
+      _selectionController.selectedRanges = newSelectedItems.toRanges();
+    });
   }
 
   void _updateSelectedItems() {
@@ -310,6 +312,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
     _scrollController = ScrollController();
     _selectionController = ListViewSelectionController(selectMode: SelectMode.multi);
     _selectionController.addListener(_updateSelectedItems);
+    MediaBinding.instance.items.addStructureListener(_updateItems);
     _focusNode = FocusNode();
     _updateItems();
     _selectionFilter = IndexedMediaItemFilter(_selectionController.selectedItems);
@@ -321,6 +324,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
     _selectionFilter.removeListener(_handleFilteredIndexesChanged);
     _selectionFilter.dispose();
     _focusNode.dispose();
+    MediaBinding.instance.items.removeStructureListener(_updateItems);
     _selectionController.removeListener(_updateSelectedItems);
     _selectionController.dispose();
     _scrollController.dispose();
