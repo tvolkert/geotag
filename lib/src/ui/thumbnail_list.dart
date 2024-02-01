@@ -1,5 +1,7 @@
 // ignore_for_file: avoid_print
 
+import 'dart:math' as math;
+
 import 'package:chicago/chicago.dart'
     show
         isPlatformCommandKeyPressed,
@@ -34,10 +36,8 @@ class _ThumbnailListState extends State<ThumbnailList> {
   late final ScrollController _scrollController;
   late final ListViewSelectionController _selectionController;
   late final FocusNode _focusNode;
-  final ScrollToVisibleController _scrollToVisibleController = ScrollToVisibleController();
   final ReentrantDetector _jumpToScrollCheck = ReentrantDetector();
   late IndexedMediaItemFilter _selectionFilter;
-  MediaItem? _selectedItem;
   bool _showOnlyMissingDate = false;
   bool _showOnlyMissingGeotag = false;
   bool _showOnlyMissingEvent = false;
@@ -52,6 +52,32 @@ class _ThumbnailListState extends State<ThumbnailList> {
   static bool _itemIsMissingGeotag(MediaItem item) => !item.hasLatlng;
 
   static bool _itemIsMissingEvent(MediaItem item) => !item.hasEvent;
+
+  double? _calculateScrollToVisibleOffset(int index) {
+    final double maxScrollOffset = _items.length * itemExtent - context.size!.width;
+    const double minScrollOffset = 0;
+    double leftScrollOffset = index * itemExtent;
+    double rightScrollOffset = leftScrollOffset - context.size!.width + itemExtent;
+    leftScrollOffset = math.min(leftScrollOffset, maxScrollOffset);
+    rightScrollOffset = math.max(rightScrollOffset, minScrollOffset);
+    if (_scrollController.offset < rightScrollOffset) {
+      return rightScrollOffset;
+    } else if (_scrollController.offset > leftScrollOffset) {
+      return leftScrollOffset;
+    } else {
+      // Already visible
+      return null;
+    }
+  }
+
+  void _scrollToVisible(int index) {
+    SchedulerBinding.instance.addPostFrameCallback((Duration timeStamp) {
+      final double? offset = _calculateScrollToVisibleOffset(index);
+      if (offset != null) {
+        _scrollController.jumpTo(offset);
+      }
+    });
+  }
 
   void _updateItems() {
     MediaItems items = MediaBinding.instance.items;
@@ -84,7 +110,6 @@ class _ThumbnailListState extends State<ThumbnailList> {
     _selectionFilter.removeListener(_handleFilteredIndexesChanged);
     _selectionFilter = IndexedMediaItemFilter(_selectionController.selectedItems);
     _selectionFilter.addListener(_handleFilteredIndexesChanged);
-    _selectedItem = selectedIndex == null ? null : _items[selectedIndex!];
     final MediaItems selectedItems = _items.where(_selectionFilter);
     GeotagHome.of(context).featuredItems = selectedItems;
   }
@@ -94,31 +119,26 @@ class _ThumbnailListState extends State<ThumbnailList> {
       _selectionController.removeListener(_updateSelectedItems);
       try {
         _selectionController.clearSelection();
-        for (int i in _selectionFilter.indexes) {
-          _selectionController.addSelectedIndex(i);
+        double fromCurrent(double offset) => (offset - _scrollController.offset).abs();
+        double scrollToVisibleOffset = double.infinity;
+        bool isScrollNeeded = true;
+        for (int index in _selectionFilter.indexes) {
+          _selectionController.addSelectedIndex(index);
+          if (isScrollNeeded) {
+            final double? neededOffset = _calculateScrollToVisibleOffset(index);
+            if (neededOffset == null) {
+              isScrollNeeded = false;
+            } else if (fromCurrent(neededOffset) < fromCurrent(scrollToVisibleOffset)) {
+              scrollToVisibleOffset = neededOffset;
+            }
+          }
+        }
+        if (isScrollNeeded) {
+          assert(scrollToVisibleOffset.isFinite);
+          _scrollController.jumpTo(scrollToVisibleOffset);
         }
       } finally {
         _selectionController.addListener(_updateSelectedItems);
-      }
-    });
-  }
-
-  void _handleItemCollectionChanged() {
-    setState(() {
-      // In addition to updating the selection, [build] references [items].
-      // Hence, the unconditional [setState] call.
-      if (_selectedItem != null) {
-        final int oldSelectedIndex = selectedIndex!;
-        final int newSelectedIndex = _items.indexOf(_selectedItem!);
-        _selectionController.selectedIndex = newSelectedIndex;
-        if (!_jumpToScrollCheck.isReentrant) {
-          SchedulerBinding.instance.addPostFrameCallback((Duration timeStamp) {
-            final double leftScrollOffset = newSelectedIndex * itemExtent;
-            _scrollController.jumpTo(newSelectedIndex > oldSelectedIndex
-                ? leftScrollOffset - context.size!.width + itemExtent
-                : leftScrollOffset);
-          });
-        }
       }
     });
   }
@@ -177,10 +197,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
         } else {
           _selectionController.selectedIndex = newSelectedIndex;
         }
-        _scrollToVisibleController.notifyListener(
-          newSelectedIndex,
-          ScrollPositionAlignmentPolicy.keepVisibleAtStart,
-        );
+        _scrollToVisible(newSelectedIndex);
       });
     }
   }
@@ -194,10 +211,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
         } else {
           _selectionController.selectedIndex = newSelectedIndex;
         }
-        _scrollToVisibleController.notifyListener(
-          newSelectedIndex,
-          ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
-        );
+        _scrollToVisible(newSelectedIndex);
       });
     }
   }
@@ -297,7 +311,6 @@ class _ThumbnailListState extends State<ThumbnailList> {
     _selectionController = ListViewSelectionController(selectMode: SelectMode.multi);
     _selectionController.addListener(_updateSelectedItems);
     _focusNode = FocusNode();
-    MediaBinding.instance.items.addStructureListener(_handleItemCollectionChanged);
     _updateItems();
     _selectionFilter = IndexedMediaItemFilter(_selectionController.selectedItems);
     _selectionFilter.addListener(_handleFilteredIndexesChanged);
@@ -307,7 +320,6 @@ class _ThumbnailListState extends State<ThumbnailList> {
   void dispose() {
     _selectionFilter.removeListener(_handleFilteredIndexesChanged);
     _selectionFilter.dispose();
-    MediaBinding.instance.items.removeStructureListener(_handleItemCollectionChanged);
     _focusNode.dispose();
     _selectionController.removeListener(_updateSelectedItems);
     _selectionController.dispose();
@@ -397,7 +409,6 @@ class _ThumbnailListState extends State<ThumbnailList> {
                           index: index,
                           item: _items[index],
                           isSelected: _selectionController.isItemSelected(index),
-                          controller: _scrollToVisibleController,
                         ),
                       ),
                     );
@@ -462,58 +473,16 @@ class _ToggleButton extends StatelessWidget {
   }
 }
 
-class ScrollToVisibleController {
-  final Set<ScrollToVisibleListener> _listeners = <ScrollToVisibleListener>{};
-
-  void addListener(ScrollToVisibleListener listener) {
-    _listeners.add(listener);
-  }
-
-  void removeListener(ScrollToVisibleListener listener) {
-    _listeners.remove(listener);
-  }
-
-  void notifyListener(int index, ScrollPositionAlignmentPolicy policy) {
-    for (ScrollToVisibleListener listener in _listeners) {
-      if (listener.widget.index == index) {
-        listener.handleScrollToVisible(policy);
-      }
-    }
-  }
-}
-
-mixin ScrollToVisibleListener on State<Thumbnail> {
-  void handleScrollToVisible(ScrollPositionAlignmentPolicy policy) {
-    SchedulerBinding.instance.addPostFrameCallback((Duration timeStamp) {
-      Scrollable.ensureVisible(context, alignmentPolicy: policy);
-    }, debugLabel: 'scrollToVisible');
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    widget.controller.addListener(this);
-  }
-
-  @override
-  void dispose() {
-    widget.controller.removeListener(this);
-    super.dispose();
-  }
-}
-
 class Thumbnail extends StatefulWidget {
   Thumbnail({
     required this.index,
     required this.item,
     required this.isSelected,
-    required this.controller,
   }) : super(key: ValueKey<String>(item.path));
 
   final int index;
   final MediaItem item;
   final bool isSelected;
-  final ScrollToVisibleController controller;
 
   int get id => item.id;
   bool get hasLatlng => item.hasLatlng;
@@ -522,7 +491,7 @@ class Thumbnail extends StatefulWidget {
   State<Thumbnail> createState() => _ThumbnailState();
 }
 
-class _ThumbnailState extends State<Thumbnail> with ScrollToVisibleListener {
+class _ThumbnailState extends State<Thumbnail> {
   void _handleItemUpdated() {
     setState(() {
       // [build] references properties of [widget.item].
