@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-class ConfirmDeleteFilesDialog extends StatelessWidget {
-  const ConfirmDeleteFilesDialog({
+class ConfirmationDialog extends StatelessWidget {
+  const ConfirmationDialog({
     super.key,
     required this.message,
   });
@@ -12,7 +12,7 @@ class ConfirmDeleteFilesDialog extends StatelessWidget {
     final bool? confirmed = await showModalBottomSheet<bool>(
       context: context,
       builder: (BuildContext context) {
-        return const ConfirmDeleteFilesDialog(
+        return const ConfirmationDialog(
           message: 'Are you sure you wan to delete the selected files?',
         );
       },

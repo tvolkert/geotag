@@ -20,7 +20,7 @@ import '../extensions/stream.dart';
 import '../foundation/base.dart';
 import '../foundation/reentrant_detector.dart';
 import '../model/media.dart';
-import 'confirm_delete_files.dart';
+import 'confirmation_dialog.dart';
 import 'home.dart';
 import 'video_player.dart';
 
@@ -183,7 +183,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
   }
 
   void _handleDeleteSelectedItems() async {
-    if (await ConfirmDeleteFilesDialog.confirmDeleteFiles(context)) {
+    if (await ConfirmationDialog.confirmDeleteFiles(context)) {
       _deleteItems(_selectionController.selectedItems.toList());
     }
   }
