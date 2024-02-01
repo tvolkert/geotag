@@ -10,6 +10,7 @@ import 'package:geotag/src/foundation/debug.dart';
 import 'package:meta/meta.dart';
 
 import 'binding.dart';
+import 'web_view.dart';
 
 /// Signature for callback to [testWidgets] and [benchmarkWidgets].
 typedef GeotagTesterCallback = Future<void> Function(
@@ -24,6 +25,7 @@ void testGeotag(String description, WidgetTesterCallback callback) {
     debugAllowBindingReinitialization = true;
     addTearDown(() => debugUseRealIsolates = true);
     addTearDown(() => debugAllowBindingReinitialization = false);
+    installFakeWebPlatform();
     await TestGeotagAppBinding.ensureInitialized(reinitialize: true);
     await callback(tester);
   });
