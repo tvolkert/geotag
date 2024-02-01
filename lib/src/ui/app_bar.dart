@@ -11,7 +11,7 @@ import '../extensions/stream.dart';
 import '../model/image.dart';
 import '../model/media.dart';
 import '../model/video.dart';
-import 'confirmation_dialog.dart';
+import 'dialogs.dart';
 import 'home.dart';
 
 class GeotagAppBar extends StatefulWidget implements PreferredSizeWidget {
@@ -61,12 +61,22 @@ class _GeotagAppBarState extends State<GeotagAppBar> {
     if (result != null) {
       TaskBinding.instance.addTasks(result.files.length);
       final Iterable<String> paths = result.files.map<String>((PlatformFile file) => file.path!);
+      final List<String> failures = <String>[];
       await MediaBinding.instance.items.addFiles(paths).listenAndWait((void _) {
         TaskBinding.instance.onTaskCompleted();
       }, onError: (Object error, StackTrace stack) {
+        if (error is AddFileError) {
+          failures.add(error.path);
+        }
         print('$error\n$stack');
         TaskBinding.instance.onTaskCompleted();
       });
+      if (failures.isNotEmpty && mounted) {
+        StringBuffer buf = StringBuffer();
+        buf.writeln('The following files were unable to be added:');
+        buf.write(failures.map<String>((String path) => path.split('/').last).join('\n'));
+        InformationalDialog.showErrorMessage(context, buf.toString());
+      }
     }
   }
 

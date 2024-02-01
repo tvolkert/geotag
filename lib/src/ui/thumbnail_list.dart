@@ -20,7 +20,7 @@ import '../extensions/stream.dart';
 import '../foundation/base.dart';
 import '../foundation/reentrant_detector.dart';
 import '../model/media.dart';
-import 'confirmation_dialog.dart';
+import 'dialogs.dart';
 import 'home.dart';
 import 'video_player.dart';
 

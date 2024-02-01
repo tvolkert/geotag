@@ -948,7 +948,7 @@ final class RootMediaItems extends MediaItems {
         if (chrootFs.file(path).existsSync()) {
           chrootFs.file(path).deleteSync();
         }
-        yield* Stream<DbRow>.error(WrappedError(error, 'While processing $path'), stack);
+        yield* Stream<DbRow>.error(AddFileError(error, 'While processing $path', path), stack);
       }
     }
   }
@@ -1237,4 +1237,10 @@ class MediaNotifier extends Object with ChangeNotifier {
 
   @override
   bool get hasListeners => super.hasListeners;
+}
+
+class AddFileError extends WrappedError {
+  AddFileError(super.error, super.message, this.path);
+
+  final String path;
 }

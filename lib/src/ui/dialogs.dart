@@ -30,10 +30,88 @@ class ConfirmationDialog extends StatelessWidget {
   static Future<bool> _show(BuildContext context, String message) async {
     final bool? confirmed = await showModalBottomSheet<bool>(
       context: context,
-      builder: (BuildContext context) => ConfirmationDialog(message: message),
+      builder: (BuildContext context) {
+        return ConfirmationDialog(message: message);
+      },
     );
     return confirmed ?? false;
   }
+
+  @override
+  Widget build(BuildContext context) {
+    return _DialogBody(
+      message: message,
+      options: <Widget>[
+        Expanded(
+          flex: 4,
+          child: ElevatedButton(
+            child: const Text('Cancel'),
+            onPressed: () => Navigator.pop<bool>(context, false),
+          ),
+        ),
+        Expanded(
+          flex: 1,
+          child: Container(),
+        ),
+        Expanded(
+          flex: 4,
+          child: ElevatedButton(
+            autofocus: true,
+            child: const Text('Yes'),
+            onPressed: () => Navigator.pop<bool>(context, true),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class InformationalDialog extends StatelessWidget {
+  const InformationalDialog({
+    super.key,
+    required this.message,
+  });
+
+  final String message;
+
+  static Future<void> showErrorMessage(BuildContext context, String message) {
+    return showModalBottomSheet<void>(
+      context: context,
+      builder: (BuildContext context) => InformationalDialog(message: message),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _DialogBody(
+      message: message,
+      options: <Widget>[
+        Expanded(
+          flex: 3,
+          child: Container(),
+        ),
+        Expanded(
+          flex: 4,
+          child: ElevatedButton(
+            autofocus: true,
+            child: const Text('OK'),
+            onPressed: () => Navigator.pop<void>(context),
+          ),
+        ),
+        Expanded(
+          flex: 3,
+          child: Container(),
+        ),
+      ],
+    );
+  }
+}
+
+class _DialogBody extends StatelessWidget {
+  const _DialogBody({ required this.message, required this.options });
+
+  final String message;
+  final List<Widget> options;
 
   @override
   Widget build(BuildContext context) {
@@ -55,7 +133,7 @@ class ConfirmationDialog extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 40),
                 child: Center(
-                  child: Text(
+                  child: SelectableText(
                     message,
                     style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     textAlign: TextAlign.center,
@@ -69,27 +147,7 @@ class ConfirmationDialog extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 200),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
-                  children: <Widget>[
-                    Expanded(
-                      flex: 4,
-                      child: ElevatedButton(
-                        child: const Text('Cancel'),
-                        onPressed: () => Navigator.pop<bool>(context, false),
-                      ),
-                    ),
-                    Expanded(
-                      flex: 1,
-                      child: Container(),
-                    ),
-                    Expanded(
-                      flex: 4,
-                      child: ElevatedButton(
-                        autofocus: true,
-                        child: const Text('Yes'),
-                        onPressed: () => Navigator.pop<bool>(context, true),
-                      ),
-                    ),
-                  ],
+                  children: options,
                 ),
               ),
             ),
