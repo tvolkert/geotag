@@ -556,12 +556,6 @@ abstract base class MediaItems extends MediaItemsView {
     return index < 0 ? -1 : index;
   }
 
-  @mustCallSuper
-  void dispose() {
-    _structureNotifier?.dispose();
-    _structureNotifier = null;
-  }
-
   /// Writes these media items to disk, encoding their metadata in their files.
   ///
   /// Returns a stream that will yield an event for every item in this list as
@@ -801,14 +795,6 @@ final class RootMediaItems extends MediaItems {
       });
       _notifyStructureListeners();
     }
-  }
-
-  @override
-  void dispose() {
-    for (MediaNotifier notifier in _metadataNotifiers.values) {
-      notifier.dispose();
-    }
-    super.dispose();
   }
 
   void addMetadataListener(VoidCallback listener, {int? id}) {
@@ -1161,12 +1147,6 @@ final class FilteredMediaItems extends MediaItems {
 
   @override
   set comparator(MediaItemComparator value) => parent.comparator = value;
-
-  @override
-  void dispose() {
-    filter.dispose();
-    super.dispose();
-  }
 
   void _handleParentItemInsertedAt(int index) {
     filter.handleParentItemInsertedAt(index);

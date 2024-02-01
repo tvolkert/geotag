@@ -53,7 +53,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
 
   static bool _itemIsMissingEvent(MediaItem item) => !item.hasEvent;
 
-  void _updateItems({bool dispose = true}) {
+  void _updateItems() {
     MediaItems items = MediaBinding.instance.items;
     if (_showOnlyMissingDate) {
       items = items.where(_filterByDate);
@@ -76,9 +76,6 @@ class _ThumbnailListState extends State<ThumbnailList> {
 
     // It's important that we update the selection *after* [_items] since
     // [_handleSelectionChanged] resolves the selection against the items.
-    if (dispose) {
-      _items.dispose();
-    }
     _items = items;
     _selectionController.selectedRanges = newSelectedItems.toRanges();
   }
@@ -301,7 +298,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
     _selectionController.addListener(_updateSelectedItems);
     _focusNode = FocusNode();
     MediaBinding.instance.items.addStructureListener(_handleItemCollectionChanged);
-    _updateItems(dispose: false);
+    _updateItems();
     _selectionFilter = IndexedMediaItemFilter(_selectionController.selectedItems);
     _selectionFilter.addListener(_handleFilteredIndexesChanged);
   }
