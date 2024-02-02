@@ -126,6 +126,28 @@ class _ThumbnailListState extends State<ThumbnailList> {
     });
   }
 
+  /// Scrolls the minimum distance necessary (possibly not at all) to ensure
+  /// that at least one of the specified [candidateIndexes] is fully visible.
+  void _minimallyScrollToIndex(Iterable<int> candidateIndexes) {
+    double fromCurrent(double offset) => (offset - _scrollController.offset).abs();
+    double scrollToVisibleOffset = double.infinity;
+    bool isScrollNeeded = candidateIndexes.isNotEmpty;
+    for (int index in candidateIndexes) {
+      if (isScrollNeeded) {
+        final double? neededOffset = _calculateScrollToVisibleOffset(index);
+        if (neededOffset == null) {
+          isScrollNeeded = false;
+        } else if (fromCurrent(neededOffset) < fromCurrent(scrollToVisibleOffset)) {
+          scrollToVisibleOffset = neededOffset;
+        }
+      }
+    }
+    if (isScrollNeeded) {
+      assert(scrollToVisibleOffset.isFinite);
+      _scrollController.jumpTo(scrollToVisibleOffset);
+    }
+  }
+
   void _updateSelectedItems() {
     _selectionFilter.removeListener(_handleFilteredIndexesChanged);
     _selectionFilter = IndexedMediaItemFilter(_selectionController.selectedItems);
@@ -136,35 +158,8 @@ class _ThumbnailListState extends State<ThumbnailList> {
 
   void _handleFilteredIndexesChanged() {
     setState(() {
-      _selectionController.removeListener(_updateSelectedItems);
-      try {
-        _selectionController.clearSelection();
-        double fromCurrent(double offset) => (offset - _scrollController.offset).abs();
-        double scrollToVisibleOffset = double.infinity;
-        bool isScrollNeeded = _selectionFilter.indexes.isNotEmpty;
-        for (int index in _selectionFilter.indexes) {
-          _selectionController.addSelectedIndex(index);
-          if (isScrollNeeded) {
-            final double? neededOffset = _calculateScrollToVisibleOffset(index);
-            if (neededOffset == null) {
-              isScrollNeeded = false;
-            } else if (fromCurrent(neededOffset) < fromCurrent(scrollToVisibleOffset)) {
-              scrollToVisibleOffset = neededOffset;
-            }
-          }
-        }
-        if (isScrollNeeded) {
-          assert(scrollToVisibleOffset.isFinite);
-          _scrollController.jumpTo(scrollToVisibleOffset);
-        }
-      } finally {
-        _selectionController.addListener(_updateSelectedItems);
-      }
-
-      // Now that we're done mucking with the selection, we can update the
-      // selected items. Doing so in the for loop above would have yielded
-      // unnecessary churn.
-      _updateSelectedItems();
+      _selectionController.selectedItems = _selectionFilter.indexes;
+      _minimallyScrollToIndex(_selectionFilter.indexes);
     });
   }
 
