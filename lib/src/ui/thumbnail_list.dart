@@ -105,6 +105,24 @@ class _ThumbnailListState extends State<ThumbnailList> {
     setState(() {
       _items = items;
       _selectionController.selectedRanges = newSelectedItems.toRanges();
+
+      double fromCurrent(double offset) => (offset - _scrollController.offset).abs();
+      double scrollToVisibleOffset = double.infinity;
+      bool isScrollNeeded = _selectionController.selectedItems.isNotEmpty;
+      for (int index in _selectionController.selectedItems) {
+        if (isScrollNeeded) {
+          final double? neededOffset = _calculateScrollToVisibleOffset(index);
+          if (neededOffset == null) {
+            isScrollNeeded = false;
+          } else if (fromCurrent(neededOffset) < fromCurrent(scrollToVisibleOffset)) {
+            scrollToVisibleOffset = neededOffset;
+          }
+        }
+      }
+      if (isScrollNeeded) {
+        assert(scrollToVisibleOffset.isFinite);
+        _scrollController.jumpTo(scrollToVisibleOffset);
+      }
     });
   }
 
