@@ -1,12 +1,13 @@
-import 'dart:typed_data';
-
 import 'package:file/file.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geotag/src/bindings/db.dart';
 import 'package:geotag/src/bindings/debug.dart';
 import 'package:geotag/src/bindings/files.dart';
 import 'package:geotag/src/model/media.dart';
 import 'package:geotag/src/foundation/debug.dart';
+import 'package:geotag/src/ui/thumbnail_list.dart';
 import 'package:meta/meta.dart';
 
 import 'binding.dart';
@@ -66,6 +67,27 @@ extension WidgetTesterExtensions on WidgetTester {
     fs.file(oneByOneBlackJpgWithDateAndGeo).writeAsBytesSync(oneByOneBlackJpgWithDateAndGeoBytes);
 
     return images;
+  }
+
+  Future<void> selectThumbnailsAt(Iterable<int> indexes) async {
+    final LogicalKeyboardKey multiSelectKey;
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.macOS:
+        multiSelectKey = LogicalKeyboardKey.metaLeft;
+      default:
+        multiSelectKey = LogicalKeyboardKey.controlLeft;
+    }
+
+    await tap(find.byType(Thumbnail).at(indexes.first));
+    await pump();
+    if (indexes.length > 1) {
+      await sendKeyDownEvent(multiSelectKey);
+      for (final int index in indexes.skip(1)) {
+        await tap(find.byType(Thumbnail).at(index));
+        await pump();
+      }
+      await sendKeyUpEvent(multiSelectKey);
+    }
   }
 
   DbRow newDbRow({

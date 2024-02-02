@@ -1,42 +1,47 @@
-import 'dart:io' show File;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:geotag/src/bindings/files.dart';
 import 'package:geotag/src/bindings/media.dart';
 import 'package:geotag/src/model/media.dart';
-import 'package:geotag/src/ui/preview_panel.dart';
-import 'package:geotag/src/ui/video_player.dart';
+import 'package:geotag/src/ui/home.dart';
+import 'package:geotag/src/ui/photo_pile.dart';
 
 import '../src/common.dart';
 
-File _imageFile(String filename) {
-  return FilesBinding.instance.fs.file('/support/media/images/$filename');
+extension _WidgetTesterBrevityExtensions on WidgetTester {
+  _ImageExpectations expectImageAt(int index) {
+    final Finder image = find.descendant(of: find.byType(PhotoPile), matching: find.byType(Image));
+    return _ImageExpectations(widget<Image>(image.at(index)).image);
+  }
+}
+
+class _ImageExpectations {
+  const _ImageExpectations(this.image);
+
+  final ImageProvider image;
+
+  void isFileNamed(String filename) {
+    expect(image, isA<FileImage>());
+    expect((image as FileImage).file.path, endsWith(filename));
+  }
 }
 
 Future<void> main() async {
   testGeotag('PreviewPanel correctly updates when items change relative order due to update', (WidgetTester tester) async {
     final ImageReferences images = tester.loadImages();
     final RootMediaItems root = MediaBinding.instance.items..comparator = const ByDate(Ascending());
-    final List<String> imagePaths = images.paths.toList();
-    await root.addFiles(imagePaths).drain<void>();
-    final IndexedMediaItemFilter filter = IndexedMediaItemFilter(<int>[1, 2]);
-    final MediaItems selected = root.where(filter);
-    final VideoPlayerPlayPauseController playPauseController = VideoPlayerPlayPauseController();
-    await tester.pumpWidget(
-      MaterialApp(
-        home: PreviewPanel(
-          items: selected,
-          playPauseController: playPauseController,
-        ),
-      ),
-    );
+    await root.addFiles(images.paths).drain<void>();
+    await tester.pumpWidget(const MaterialApp(home: GeotagHome()));
 
+    // Select the second and third thumbnails
+    await tester.selectThumbnailsAt(<int>[1, 2]);
+    tester.expectImageAt(0).isFileNamed('oneByOneWhite.jpg');
+    tester.expectImageAt(1).isFileNamed('oneByOneBlackJpgWithGeo.jpg');
+
+    // Edit the date on the first item to push it to the end of the root list
     root[1].dateTimeOriginal = DateTime(2024);
     await root[1].commit();
-    expect(filter.indexes, <int>[1, 4]);
     await tester.pump();
-    expect(find.image(FileImage(_imageFile('oneByOneWhite.jpg'), scale: 1)), findsOne);
-    expect(find.image(FileImage(_imageFile('oneByOneBlackJpgWithGeo.jpg'), scale: 1)), findsOne);
+    tester.expectImageAt(0).isFileNamed('oneByOneBlackJpgWithGeo.jpg');
+    tester.expectImageAt(1).isFileNamed('oneByOneWhite.jpg');
   });
 }

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geotag/src/bindings/media.dart';
 import 'package:geotag/src/model/media.dart';
@@ -82,12 +81,7 @@ Future<void> main() async {
     expect(find.byType(Thumbnail), findsNWidgets(3));
 
     // Select the second and third thumbnails
-    await tester.tap(find.byType(Thumbnail).at(1));
-    await tester.pump();
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.shift);
-    await tester.tap(find.byType(Thumbnail).at(2));
-    await tester.pump();
-    await tester.sendKeyUpEvent(LogicalKeyboardKey.shift);
+    await tester.selectThumbnailsAt(<int>[1, 2]);
 
     // Add an event to the last item
     root[1]..event = 'event'..isModified = true..lastModified = tester.binding.clock.now();

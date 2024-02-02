@@ -142,6 +142,11 @@ class _ThumbnailListState extends State<ThumbnailList> {
       } finally {
         _selectionController.addListener(_updateSelectedItems);
       }
+
+      // Now that we're done mucking with the selection, we can update the
+      // selected items. Doing so in the for loop above would have yielded
+      // unnecessary churn.
+      _updateSelectedItems();
     });
   }
 
