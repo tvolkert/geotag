@@ -362,16 +362,18 @@ class _MetadataPanelState extends State<MetadataPanel> {
         }
       }
     }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Wrap(
       children: <Widget>[
-        const Padding(
-          padding: EdgeInsets.all(20),
-          child: Text(
-            'Details',
-            style: TextStyle(
-              color: Color(0xff606367),
-              fontFeatures: <FontFeature>[FontFeature.enable('smcp')],
+        const SizedBox(
+          width: double.infinity,
+          child: Padding(
+            padding: EdgeInsets.all(20),
+            child: Text(
+              'Details',
+              style: TextStyle(
+                color: Color(0xff606367),
+                fontFeatures: <FontFeature>[FontFeature.enable('smcp')],
+              ),
             ),
           ),
         ),
@@ -383,7 +385,7 @@ class _MetadataPanelState extends State<MetadataPanel> {
         MetadataField(
           icon: Icons.photo_outlined,
           child: widget.items.isSingle
-              ? SelectableText(widget.items.single.path.split('/').last)
+              ? Expanded(child: SelectableText(widget.items.single.path.split('/').last))
               : Text(
                   '${widget.items.length} items',
                   style: const TextStyle(fontStyle: FontStyle.italic),
@@ -400,18 +402,14 @@ class _MetadataPanelState extends State<MetadataPanel> {
             ),
           ),
         ),
-        Center(
-          child: TextField(
-            controller: latlngController,
-            focusNode: latlngFocusNode,
-            onSubmitted: _handleLatlngSubmitted,
-          ),
+        TextField(
+          controller: latlngController,
+          focusNode: latlngFocusNode,
+          onSubmitted: _handleLatlngSubmitted,
         ),
-        Expanded(
-          child: AspectRatio(
-            aspectRatio: 1.65,
-            child: WebViewWidget(controller: webViewController),
-          ),
+        AspectRatio(
+          aspectRatio: 1.65,
+          child: WebViewWidget(controller: webViewController),
         ),
       ],
     );
