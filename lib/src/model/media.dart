@@ -397,6 +397,22 @@ final class ById extends MediaItemComparator {
   int doCompare(MediaItem a, MediaItem b) => a.id.compareTo(b.id);
 }
 
+final class ByFilename extends MediaItemComparator {
+  const ByFilename(super.direction);
+
+  static const ById _byId = ById(Ascending());
+
+  @override
+  @protected
+  int doCompare(MediaItem a, MediaItem b) {
+    if (a == b) {
+      return 0;
+    }
+    final int result = a.path.compareTo(b.path);
+    return result != 0 ? result : _byId.compare(a, b);
+  }
+}
+
 final class ByDate extends MediaItemComparator {
   const ByDate(super.direction);
 

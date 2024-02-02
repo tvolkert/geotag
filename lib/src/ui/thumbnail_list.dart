@@ -173,10 +173,10 @@ class _ThumbnailListState extends State<ThumbnailList> {
 
   void _handleSortByDate() {
     switch (_items.comparator) {
-      case ById():
-        _items.comparator = const ByDate(Ascending());
       case ByDate(direction: SortDirection direction):
         _items.comparator = ByDate(direction.reversed);
+      default:
+        _items.comparator = const ByDate(Ascending());
     }
   }
 
@@ -184,8 +184,17 @@ class _ThumbnailListState extends State<ThumbnailList> {
     switch (_items.comparator) {
       case ById(direction: SortDirection direction):
         _items.comparator = ById(direction.reversed);
-      case ByDate():
+      default:
         _items.comparator = const ById(Ascending());
+    }
+  }
+
+  void _handleSortByFilename() {
+    switch (_items.comparator) {
+      case ByFilename(direction: SortDirection direction):
+        _items.comparator = ByFilename(direction.reversed);
+      default:
+        _items.comparator = const ByFilename(Ascending());
     }
   }
 
@@ -246,6 +255,9 @@ class _ThumbnailListState extends State<ThumbnailList> {
         result = KeyEventResult.handled;
       } else if (event.logicalKey == LogicalKeyboardKey.keyD) {
         _handleSortByDate();
+        result = KeyEventResult.handled;
+      } else if (event.logicalKey == LogicalKeyboardKey.keyF) {
+        _handleSortByFilename();
         result = KeyEventResult.handled;
       } else if (event.logicalKey == LogicalKeyboardKey.keyI) {
         _handleSortById();
@@ -387,6 +399,12 @@ class _ThumbnailListState extends State<ThumbnailList> {
                         tooltipMessage: 'Sort by ID',
                         isSelected: () => _items.comparator is ById,
                         onPressed: _handleSortById,
+                      ),
+                      _ToggleButton(
+                        icon: Icons.folder_outlined,
+                        tooltipMessage: 'Sort by filename',
+                        isSelected: () => _items.comparator is ByFilename,
+                        onPressed: _handleSortByFilename,
                       ),
                     ],
                   ),
