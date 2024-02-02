@@ -1,3 +1,5 @@
+import 'package:flutter/src/widgets/framework.dart';
+import 'package:flutter/widgets.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:webview_flutter_platform_interface/webview_flutter_platform_interface.dart';
 
@@ -48,6 +50,9 @@ class _FakeWebViewController extends MockPlatformInterfaceMixin implements Platf
 }
 
 class _FakeWebViewWidget extends MockPlatformInterfaceMixin implements PlatformWebViewWidget {
+  @override
+  Widget build(BuildContext context) => Container();
+
   @override
   dynamic noSuchMethod(Invocation invocation) {
     super.noSuchMethod(invocation);
