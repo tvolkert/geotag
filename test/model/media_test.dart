@@ -33,6 +33,10 @@ bool _needsGeo(MediaItem item) => !item.hasLatlng;
 
 bool _hasGeo(MediaItem item) => item.hasLatlng;
 
+bool _needsDate(MediaItem item) => !item.hasDateTime;
+
+bool _needsEvent(MediaItem item) => !item.hasEvent;
+
 Future<void> main() async {
   testGeotag('Metadata update not visible until commit is called', (WidgetTester tester) async {
     final ImageReferences images = tester.loadImages();
@@ -411,6 +415,50 @@ Future<void> main() async {
     expect(selected.last.id, id);
   });
 
+  testGeotag('Predicate->Indexed filter updates but does not notify when another item is updated to newly match the predicate', (WidgetTester tester) async {
+    final RootMediaItems root = await tester._populateItems();
+    final MediaItems yesGeo = root.where(const PredicateMediaItemFilter(_hasGeo));
+    final IndexedMediaItemFilter filter = IndexedMediaItemFilter(<int>[1]);
+    final MediaItems selected = yesGeo.where(filter);
+    bool structureChanged = false;
+    selected.addStructureListener(() => structureChanged = true);
+    expect(selected.length, 1);
+    final int id = selected.last.id;
+    await root[0]._update((MediaItem item) => item.latlng = '0,0');
+    expect(selected.length, 1);
+    expect(structureChanged, isFalse);
+    expect(filter.indexes, <int>[2]);
+    expect(selected.last.id, id);
+  });
+
+  testGeotag('Predicate->Indexed filter updates and notifies when selected item is updated to no longer match the predicate', (WidgetTester tester) async {
+    final RootMediaItems root = await tester._populateItems();
+    final MediaItems noEvent = root.where(const PredicateMediaItemFilter(_needsEvent));
+    final IndexedMediaItemFilter filter = IndexedMediaItemFilter(<int>[4]);
+    final MediaItems selected = noEvent.where(filter);
+    bool structureChanged = false;
+    selected.addStructureListener(() => structureChanged = true);
+    expect(selected.length, 1);
+    await root[4]._update((MediaItem item) => item.event = 'event');
+    expect(selected.length, 0);
+    expect(structureChanged, isTrue);
+    expect(filter.indexes, <int>[]);
+  });
+
+  testGeotag('Predicate->Indexed filter does not update nor notify when another item is updated to still not match the predicate', (WidgetTester tester) async {
+    final RootMediaItems root = await tester._populateItems();
+    final MediaItems yesGeo = root.where(const PredicateMediaItemFilter(_hasGeo));
+    final IndexedMediaItemFilter filter = IndexedMediaItemFilter(<int>[1]);
+    final MediaItems selected = yesGeo.where(filter);
+    bool structureChanged = false;
+    selected.addStructureListener(() => structureChanged = true);
+    expect(selected.length, 1);
+    await root[0]._update((MediaItem item) => item.event = 'event');
+    expect(selected.length, 1);
+    expect(structureChanged, isFalse);
+    expect(filter.indexes, <int>[1]);
+  });
+
   testGeotag('Predicate->Indexed filter updates but does not notify when item is inserted', (WidgetTester tester) async {
     final ImageReferences images = tester.loadImages();
     final RootMediaItems root = MediaBinding.instance.items;
@@ -518,5 +566,17 @@ Future<void> main() async {
     expect(filter.indexes, <int>[0, 2]);
     expect(noGeo[0].id, whiteId);
     expect(noGeo[1].id, blackId);
+  });
+
+  testGeotag('Predicate->Predicate filter notifies when an item is updated to newly match both predicates', (WidgetTester tester) async {
+    final RootMediaItems root = await tester._populateItems();
+    final MediaItems noGeo = root.where(const PredicateMediaItemFilter(_needsGeo));
+    final MediaItems andNoDate = noGeo.where(const PredicateMediaItemFilter(_needsDate));
+    bool structureChanged = false;
+    andNoDate.addStructureListener(() => structureChanged = true);
+    expect(andNoDate.length, 2);
+    await root[3]._update((MediaItem item) => item.latlng = null);
+    expect(andNoDate.length, 3);
+    expect(structureChanged, isTrue);
   });
 }

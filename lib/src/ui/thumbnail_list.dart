@@ -54,7 +54,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
   static bool _itemIsMissingEvent(MediaItem item) => !item.hasEvent;
 
   double? _calculateScrollToVisibleOffset(int index) {
-    final double maxScrollOffset = _items.length * itemExtent - context.size!.width;
+    final double maxScrollOffset = math.max(0, _items.length * itemExtent - context.size!.width);
     const double minScrollOffset = 0;
     double leftScrollOffset = index * itemExtent;
     double rightScrollOffset = leftScrollOffset - context.size!.width + itemExtent;
@@ -123,7 +123,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
         _selectionController.clearSelection();
         double fromCurrent(double offset) => (offset - _scrollController.offset).abs();
         double scrollToVisibleOffset = double.infinity;
-        bool isScrollNeeded = true;
+        bool isScrollNeeded = _selectionFilter.indexes.isNotEmpty;
         for (int index in _selectionFilter.indexes) {
           _selectionController.addSelectedIndex(index);
           if (isScrollNeeded) {

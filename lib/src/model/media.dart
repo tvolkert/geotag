@@ -1165,8 +1165,20 @@ final class FilteredMediaItems extends MediaItems {
     final int localOldIndex = indexOf(beforeUpdate);
     _updateItems();
     final int localNewIndex = indexOf(parent[newIndex]);
+    if (localOldIndex == -1 && localNewIndex == -1) {
+      // This item isn't in our filter at all; ignore.
+      return;
+    }
     _forEachChild((FilteredMediaItems items) {
-      items._handleParentItemUpdated(localOldIndex, localNewIndex, beforeUpdate);
+      if (localOldIndex == -1) {
+        // Newly matching our filter.
+        items._handleParentItemInsertedAt(localNewIndex);
+      } else if (localNewIndex == -1) {
+        // Newly excluded by our filter.
+        items._handleParentItemRemovedAt(localOldIndex, beforeUpdate);
+      } else {
+        items._handleParentItemUpdated(localOldIndex, localNewIndex, beforeUpdate);
+      }
     });
     if (localOldIndex != localNewIndex) {
       _notifyStructureListeners();

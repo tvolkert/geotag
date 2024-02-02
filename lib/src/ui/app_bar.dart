@@ -44,6 +44,7 @@ class _GeotagAppBarState extends State<GeotagAppBar> {
   void _handleItemsChanged() {
     setState(() {
       _itemsIsNotEmpty = MediaBinding.instance.items.isNotEmpty;
+      _modifiedItemsExist = MediaBinding.instance.items.containsModified;
     });
   }
 
