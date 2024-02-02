@@ -12,6 +12,7 @@ import 'package:chicago/chicago.dart'
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../bindings/media.dart';
 import '../bindings/tasks.dart';
@@ -41,6 +42,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
   bool _showOnlyMissingDate = false;
   bool _showOnlyMissingGeotag = false;
   bool _showOnlyMissingEvent = false;
+  RegExp? _showOnlyMatchingRegExp;
 
   static const double itemExtent = 175;
   static const MediaItemFilter _filterByDate = PredicateMediaItemFilter(_itemIsMissingDate);
@@ -79,6 +81,12 @@ class _ThumbnailListState extends State<ThumbnailList> {
     });
   }
 
+  static PredicateMediaItemFilter _filterByRegExp(RegExp regExp) {
+    return PredicateMediaItemFilter((MediaItem item) {
+      return regExp.hasMatch(item.path);
+    });
+  }
+
   void _updateItems() {
     MediaItems items = MediaBinding.instance.items;
     if (_showOnlyMissingDate) {
@@ -89,6 +97,9 @@ class _ThumbnailListState extends State<ThumbnailList> {
     }
     if (_showOnlyMissingEvent) {
       items = items.where(_filterByEvent);
+    }
+    if (_showOnlyMatchingRegExp != null) {
+      items = items.where(_filterByRegExp(_showOnlyMatchingRegExp!));
     }
 
     List<int> newSelectedItems = <int>[];
@@ -182,6 +193,35 @@ class _ThumbnailListState extends State<ThumbnailList> {
       _showOnlyMissingEvent = !_showOnlyMissingEvent;
       _updateItems();
     });
+  }
+
+  void _handleFilterByRegExp() async {
+    if (_showOnlyMatchingRegExp != null) {
+      setState(() {
+        _showOnlyMatchingRegExp = null;
+        _updateItems();
+      });
+    } else {
+      String? pattern = await TextPromptDialog.show(context,
+          'Enter the regular expression you want to use as your filter');
+      if (pattern != null && mounted) {
+        RegExp? regExp;
+        try {
+          regExp = RegExp(pattern);
+        } on FormatException {
+          // Fall-through
+        }
+        if (regExp != null) {
+          setState(() {
+            _showOnlyMatchingRegExp = regExp;
+            _updateItems();
+          });
+        } else {
+          await InformationalDialog.showErrorMessage(context,
+              'Invalid regular expression: "$pattern"');
+        }
+      }
+    }
   }
 
   void _handleSortByDate() {
@@ -393,6 +433,12 @@ class _ThumbnailListState extends State<ThumbnailList> {
                         tooltipMessage: 'Show only missing event',
                         isSelected: () => _showOnlyMissingEvent,
                         onPressed: _handleFilterByEvent,
+                      ),
+                      _ToggleButton(
+                        icon: Symbols.regular_expression,
+                        tooltipMessage: 'Show only filenames matching a regular expression (advanced)',
+                        isSelected: () => _showOnlyMatchingRegExp != null,
+                        onPressed: _handleFilterByRegExp,
                       ),
                     ],
                   ),

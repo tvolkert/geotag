@@ -16,6 +16,7 @@ dependencies:
   file_picker: ^5.2.4
   image: any
   intl: any
+  material_symbols_icons: ^4.2718.0
   path_provider: any
   platform_native:
     path: packages/platform_native

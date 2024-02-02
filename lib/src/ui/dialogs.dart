@@ -107,11 +107,93 @@ class InformationalDialog extends StatelessWidget {
   }
 }
 
+class TextPromptDialog extends StatefulWidget {
+  const TextPromptDialog({
+    super.key,
+    required this.message,
+  });
+
+  final String message;
+
+  static Future<String?> show(BuildContext context, String message) {
+    return showModalBottomSheet<String>(
+      context: context,
+      builder: (BuildContext context) => TextPromptDialog(message: message),
+    );
+  }
+
+  @override
+  State<TextPromptDialog> createState() => _TextPromptDialogState();
+}
+
+class _TextPromptDialogState extends State<TextPromptDialog> {
+  late final TextEditingController _controller;
+
+  void _handleSubmit() {
+    final String text = _controller.text.trim();
+    Navigator.pop<String>(context, text.isEmpty ? null : text);
+  }
+
+  void _handleTextfieldSubmitted(String value) {
+    _handleSubmit();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _DialogBody(
+      message: widget.message,
+      input: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 100),
+        child: TextField(
+          controller: _controller,
+          autofocus: true,
+          onSubmitted: _handleTextfieldSubmitted,
+          maxLines: 1,
+        ),
+      ),
+      options: <Widget>[
+        Expanded(
+          flex: 3,
+          child: Container(),
+        ),
+        Expanded(
+          flex: 4,
+          child: ElevatedButton(
+            onPressed: _handleSubmit,
+            child: const Text('OK'),
+          ),
+        ),
+        Expanded(
+          flex: 3,
+          child: Container(),
+        ),
+      ],
+    );
+  }
+}
+
 class _DialogBody extends StatelessWidget {
-  const _DialogBody({ required this.message, required this.options });
+  const _DialogBody({
+    required this.message,
+    required this.options,
+    this.input,
+  });
 
   final String message;
   final List<Widget> options;
+  final Widget? input;
 
   @override
   Widget build(BuildContext context) {
@@ -141,6 +223,7 @@ class _DialogBody extends StatelessWidget {
                 ),
               ),
             ),
+            if (input != null) input!,
             Expanded(
               flex: 1,
               child: Padding(
