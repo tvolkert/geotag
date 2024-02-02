@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geotag/src/bindings/media.dart';
+import 'package:geotag/src/model/media.dart';
+import 'package:geotag/src/ui/home.dart';
 import 'package:geotag/src/ui/thumbnail_list.dart';
 
 import '../src/common.dart';
@@ -64,5 +67,34 @@ Future<void> main() async {
     await tester.tap(find.byTooltip('Show only missing geotag'));
     await tester.pump();
     expect(find.byType(Thumbnail), findsNWidgets(3));
+  });
+
+  testGeotag('Adding event to multiple items while the event filter is on works', (WidgetTester tester) async {
+    final ImageReferences images = tester.loadImages();
+    final RootMediaItems root = MediaBinding.instance.items;
+    await MediaBinding.instance.items.addFiles(images.paths.take(3)).drain<void>();
+    await tester.pumpWidget(const MaterialApp(home: GeotagHome()));
+    expect(find.byType(Thumbnail), findsNWidgets(3));
+
+    // Turn on the event filter
+    await tester.tap(find.byTooltip('Show only missing event'));
+    await tester.pump();
+    expect(find.byType(Thumbnail), findsNWidgets(3));
+
+    // Select the second and third thumbnails
+    await tester.tap(find.byType(Thumbnail).at(1));
+    await tester.pump();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shift);
+    await tester.tap(find.byType(Thumbnail).at(2));
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shift);
+
+    // Add an event to the last item
+    // root[1]..event = 'event'..isModified = true..lastModified = tester.binding.clock.now();
+    // await root[1].commit();
+    root[2]..event = 'event'..isModified = true..lastModified = tester.binding.clock.now();
+    await root[2].commit();
+    await tester.pump();
+    expect(find.byType(Thumbnail), findsNWidgets(1));
   });
 }
