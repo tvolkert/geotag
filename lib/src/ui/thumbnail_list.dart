@@ -47,6 +47,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
   MediaItemFilter? _eventFilter;
   MediaItemFilter? _mediaTypeFilter;
   RegExp? _showOnlyMatchingRegExp;
+  String _eventFilterValue = _removeEventFilterSyntheticValue;
 
   static const double itemExtent = 175;
   static const MediaItemFilter _filterByNoDate = PredicateMediaItemFilter(_itemIsMissingDate);
@@ -54,6 +55,9 @@ class _ThumbnailListState extends State<ThumbnailList> {
   static const MediaItemFilter _filterByNoEvent = PredicateMediaItemFilter(_itemIsMissingEvent);
   static const MediaItemFilter _filterByTypePhoto = PredicateMediaItemFilter(_itemIsPhoto);
   static const MediaItemFilter _filterByTypeVideo = PredicateMediaItemFilter(_itemIsVideo);
+
+  static const String _removeEventFilterSyntheticValue = '__synthetic_event_remove_filter_';
+  static const String _filterByNoEventSyntheticValue = '__synthetic_event_no_event_';
 
   static bool _itemIsMissingDate(MediaItem item) => !item.hasDateTime;
 
@@ -202,15 +206,6 @@ class _ThumbnailListState extends State<ThumbnailList> {
   }
 
   void _handleFilterByEvent(BuildContext context) {
-    if (_eventFilter != null) {
-      setState(() {
-        _eventFilter = null;
-        _updateItems();
-      });
-      return;
-    }
-
-    const String filterByNoEvent = '__synthetic_event_do_not_use';
     final PopupMenuThemeData popupMenuTheme = PopupMenuTheme.of(context);
     final RenderBox button = context.findRenderObject()! as RenderBox;
     final BuildContext overlayContext = Navigator.of(context).overlay!.context;
@@ -231,7 +226,14 @@ class _ThumbnailListState extends State<ThumbnailList> {
       ..sort();
     final Iterable<PopupMenuEntry<String>> items = <PopupMenuEntry<String>>[
       const PopupMenuItem<String>(
-        value: filterByNoEvent,
+        value: _removeEventFilterSyntheticValue,
+        child: Text(
+          '< don\'t filter by event >',
+          style: TextStyle(fontStyle: FontStyle.italic),
+        ),
+      ),
+      const PopupMenuItem<String>(
+        value: _filterByNoEventSyntheticValue,
         child: Text(
           '< only items missing an event >',
           style: TextStyle(fontStyle: FontStyle.italic),
@@ -249,7 +251,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
       shadowColor: popupMenuTheme.shadowColor,
       surfaceTintColor: popupMenuTheme.surfaceTintColor,
       items: items.toList(),
-      initialValue: null,
+      initialValue: _eventFilterValue,
       position: position,
       shape: popupMenuTheme.shape,
       color: popupMenuTheme.color,
@@ -265,7 +267,10 @@ class _ThumbnailListState extends State<ThumbnailList> {
         return null;
       }
       setState(() {
-        if (chosenEvent == filterByNoEvent) {
+        _eventFilterValue = chosenEvent;
+        if (chosenEvent == _removeEventFilterSyntheticValue) {
+          _eventFilter = null;
+        } else if (chosenEvent == _filterByNoEventSyntheticValue) {
           _eventFilter = _filterByNoEvent;
         } else {
           _eventFilter = PredicateMediaItemFilter((MediaItem item) => item.event == chosenEvent);
