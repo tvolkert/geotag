@@ -9,6 +9,7 @@ import 'package:chicago/chicago.dart'
         ListViewSelectionController,
         SelectMode,
         Span;
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
@@ -24,6 +25,8 @@ import '../model/media.dart';
 import 'dialogs.dart';
 import 'home.dart';
 import 'video_player.dart';
+
+typedef ToggleButtonPressedCallback = void Function(BuildContext context);
 
 class ThumbnailList extends StatefulWidget {
   const ThumbnailList({super.key});
@@ -41,7 +44,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
   late IndexedMediaItemFilter _selectionFilter;
   bool _showOnlyMissingDate = false;
   bool _showOnlyMissingGeotag = false;
-  bool _showOnlyMissingEvent = false;
+  MediaItemFilter? _eventFilter;
   bool _showOnlyPhotos = false;
   bool _showOnlyVideos = false;
   RegExp? _showOnlyMatchingRegExp;
@@ -49,7 +52,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
   static const double itemExtent = 175;
   static const MediaItemFilter _filterByDate = PredicateMediaItemFilter(_itemIsMissingDate);
   static const MediaItemFilter _filterByGeotag = PredicateMediaItemFilter(_itemIsMissingGeotag);
-  static const MediaItemFilter _filterByEvent = PredicateMediaItemFilter(_itemIsMissingEvent);
+  static const MediaItemFilter _filterByNoEvent = PredicateMediaItemFilter(_itemIsMissingEvent);
   static const MediaItemFilter _filterByPhoto = PredicateMediaItemFilter(_itemIsPhoto);
   static const MediaItemFilter _filterByVideo = PredicateMediaItemFilter(_itemIsVideo);
 
@@ -103,8 +106,8 @@ class _ThumbnailListState extends State<ThumbnailList> {
     if (_showOnlyMissingGeotag) {
       items = items.where(_filterByGeotag);
     }
-    if (_showOnlyMissingEvent) {
-      items = items.where(_filterByEvent);
+    if (_eventFilter != null) {
+      items = items.where(_eventFilter!);
     }
     if (_showOnlyPhotos) {
       items = items.where(_filterByPhoto);
@@ -188,42 +191,103 @@ class _ThumbnailListState extends State<ThumbnailList> {
     });
   }
 
-  void _handleFilterByDate() {
+  void _handleFilterByDate(BuildContext context) {
     setState(() {
       _showOnlyMissingDate = !_showOnlyMissingDate;
       _updateItems();
     });
   }
 
-  void _handleFilterByGeotag() {
+  void _handleFilterByGeotag(BuildContext context) {
     setState(() {
       _showOnlyMissingGeotag = !_showOnlyMissingGeotag;
       _updateItems();
     });
   }
 
-  void _handleFilterByEvent() {
-    setState(() {
-      _showOnlyMissingEvent = !_showOnlyMissingEvent;
-      _updateItems();
+  void _handleFilterByEvent(BuildContext context) {
+    if (_eventFilter != null) {
+      setState(() {
+        _eventFilter = null;
+        _updateItems();
+      });
+      return;
+    }
+
+    const String filterByNoEvent = '__synthetic_event_do_not_use';
+    final PopupMenuThemeData popupMenuTheme = PopupMenuTheme.of(context);
+    final RenderBox button = context.findRenderObject()! as RenderBox;
+    final BuildContext overlayContext = Navigator.of(context).overlay!.context;
+    final RenderBox overlay = overlayContext.findRenderObject()! as RenderBox;
+    const Offset offset = Offset.zero;
+    final RelativeRect position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        button.localToGlobal(offset, ancestor: overlay),
+        button.localToGlobal(button.size.bottomRight(Offset.zero) + offset, ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+    List<String> events = MediaBinding.instance.items.map<String?>((MediaItem item) => item.event).whereNotNull().removeDuplicates().toList()..sort();
+    final Iterable<PopupMenuEntry<String>> items = <PopupMenuEntry<String>>[
+      const PopupMenuItem<String>(
+        value: filterByNoEvent,
+        textStyle: TextStyle(fontStyle: FontStyle.italic),
+        child: Text('< only items missing an event >', style: TextStyle(fontStyle: FontStyle.italic)),
+      ),
+    ].followedBy(events.map<PopupMenuEntry<String>>((String event) {
+      return PopupMenuItem<String>(
+        value: event,
+        child: Text(event),
+      );
+    }));
+    showMenu<String>(
+      context: context,
+      elevation: popupMenuTheme.elevation,
+      shadowColor: popupMenuTheme.shadowColor,
+      surfaceTintColor: popupMenuTheme.surfaceTintColor,
+      items: items.toList(),
+      initialValue: null,
+      position: position,
+      shape: popupMenuTheme.shape,
+      color: popupMenuTheme.color,
+      constraints: BoxConstraints(maxHeight: overlayContext.size!.height / 2),
+      clipBehavior: Clip.none,
+      useRootNavigator: false,
+      popUpAnimationStyle: AnimationStyle.noAnimation,
+    )
+    .then<void>((String? chosenEvent) {
+      if (!mounted) {
+        return null;
+      }
+      if (chosenEvent == null) {
+        return null;
+      }
+      setState(() {
+        if (chosenEvent == filterByNoEvent) {
+          _eventFilter = _filterByNoEvent;
+        } else {
+          _eventFilter = PredicateMediaItemFilter((MediaItem item) => item.event == chosenEvent);
+        }
+        _updateItems();
+      });
     });
   }
 
-  void _handleFilterByPhoto() {
+  void _handleFilterByPhoto(BuildContext context) {
     setState(() {
       _showOnlyPhotos = !_showOnlyPhotos;
       _updateItems();
     });
   }
 
-  void _handleFilterByVideo() {
+  void _handleFilterByVideo(BuildContext context) {
     setState(() {
       _showOnlyVideos = !_showOnlyVideos;
       _updateItems();
     });
   }
 
-  void _handleFilterByRegExp() async {
+  void _handleFilterByRegExp(BuildContext context) async {
     if (_showOnlyMatchingRegExp != null) {
       setState(() {
         _showOnlyMatchingRegExp = null;
@@ -252,7 +316,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
     }
   }
 
-  void _handleSortByDate() {
+  void _handleSortByDate(BuildContext context) {
     switch (_items.comparator) {
       case ByDate(direction: SortDirection direction):
         _items.comparator = ByDate(direction.reversed);
@@ -261,7 +325,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
     }
   }
 
-  void _handleSortById() {
+  void _handleSortById(BuildContext context) {
     switch (_items.comparator) {
       case ById(direction: SortDirection direction):
         _items.comparator = ById(direction.reversed);
@@ -270,7 +334,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
     }
   }
 
-  void _handleSortByFilename() {
+  void _handleSortByFilename(BuildContext context) {
     switch (_items.comparator) {
       case ByFilename(direction: SortDirection direction):
         _items.comparator = ByFilename(direction.reversed);
@@ -335,13 +399,13 @@ class _ThumbnailListState extends State<ThumbnailList> {
         _handleMoveSelectionRight();
         result = KeyEventResult.handled;
       } else if (event.logicalKey == LogicalKeyboardKey.keyD) {
-        _handleSortByDate();
+        _handleSortByDate(context);
         result = KeyEventResult.handled;
       } else if (event.logicalKey == LogicalKeyboardKey.keyF) {
-        _handleSortByFilename();
+        _handleSortByFilename(context);
         result = KeyEventResult.handled;
       } else if (event.logicalKey == LogicalKeyboardKey.keyI) {
-        _handleSortById();
+        _handleSortById(context);
         result = KeyEventResult.handled;
       } else if (event.logicalKey == LogicalKeyboardKey.keyA && isPlatformCommandKeyPressed()) {
         _handleSelectAll();
@@ -459,8 +523,8 @@ class _ThumbnailListState extends State<ThumbnailList> {
                       ),
                       _ToggleButton(
                         icon: Icons.local_activity,
-                        tooltipMessage: 'Show only items missing an event',
-                        isSelected: () => _showOnlyMissingEvent,
+                        tooltipMessage: 'Show only items with a specified event',
+                        isSelected: () => _eventFilter != null,
                         onPressed: _handleFilterByEvent,
                       ),
                       _ToggleButton(
@@ -471,7 +535,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
                       ),
                       _ToggleButton(
                         icon: Icons.movie_outlined,
-                        tooltipMessage: 'Show only video',
+                        tooltipMessage: 'Show only videos',
                         isSelected: () => _showOnlyVideos,
                         onPressed: _handleFilterByVideo,
                       ),
@@ -563,9 +627,31 @@ class _ButtonBar extends StatelessWidget {
   final List<_ToggleButton> buttons;
   final MainAxisAlignment alignment;
 
-  void _handleButtonPressed(int index) {
+  Element _findNthButtonElement(BuildContext context, int index) {
+    int? i;
+    Element? result;
+    void visitor(Element element) {
+      if (element.widget is _ToggleButton) {
+        i = (i == null) ? 0 : i! + 1;
+        if (i == index) {
+          assert(result == null);
+          result = element;
+        }
+      } else if (result == null) {
+        element.visitChildElements(visitor);
+      }
+    }
+    context.visitChildElements(visitor);
+    assert(result != null);
+    return result!;
+  }
+
+  void _handleButtonPressed(BuildContext context, int index) {
+    // Index 0 isn't a button; it's reserved for the heading
     if (index > 0) {
-      buttons[index - 1].onPressed();
+      final int buttonIndex = index - 1;
+      BuildContext buttonContext = _findNthButtonElement(context, buttonIndex);
+      buttons[buttonIndex].onPressed(buttonContext);
     }
   }
 
@@ -585,7 +671,7 @@ class _ButtonBar extends StatelessWidget {
               false,
               ...buttons.map<bool>((_ToggleButton button) => button.isSelected()),
             ],
-            onPressed: _handleButtonPressed,
+            onPressed: (int index) => _handleButtonPressed(context, index),
             children: <Widget>[
               MouseRegion(
                 cursor: SystemMouseCursors.basic,
@@ -614,7 +700,7 @@ class _ToggleButton extends StatelessWidget {
   final IconData icon;
   final String tooltipMessage;
   final EmptyPredicate isSelected;
-  final VoidCallback onPressed;
+  final ToggleButtonPressedCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
