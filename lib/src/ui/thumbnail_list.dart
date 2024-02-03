@@ -227,12 +227,19 @@ class _ThumbnailListState extends State<ThumbnailList> {
       ),
       Offset.zero & overlay.size,
     );
-    List<String> events = MediaBinding.instance.items.map<String?>((MediaItem item) => item.event).whereNotNull().removeDuplicates().toList()..sort();
+    List<String> events = MediaBinding.instance.items
+        .map<String?>((MediaItem item) => item.event)
+        .whereNotNull()
+        .removeDuplicates()
+        .toList()
+      ..sort();
     final Iterable<PopupMenuEntry<String>> items = <PopupMenuEntry<String>>[
       const PopupMenuItem<String>(
         value: filterByNoEvent,
-        textStyle: TextStyle(fontStyle: FontStyle.italic),
-        child: Text('< only items missing an event >', style: TextStyle(fontStyle: FontStyle.italic)),
+        child: Text(
+          '< only items missing an event >',
+          style: TextStyle(fontStyle: FontStyle.italic),
+        ),
       ),
     ].followedBy(events.map<PopupMenuEntry<String>>((String event) {
       return PopupMenuItem<String>(
@@ -254,8 +261,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
       clipBehavior: Clip.none,
       useRootNavigator: false,
       popUpAnimationStyle: AnimationStyle.noAnimation,
-    )
-    .then<void>((String? chosenEvent) {
+    ).then<void>((String? chosenEvent) {
       if (!mounted) {
         return null;
       }
@@ -294,8 +300,8 @@ class _ThumbnailListState extends State<ThumbnailList> {
         _updateItems();
       });
     } else {
-      String? pattern = await TextPromptDialog.show(context,
-          'Enter the regular expression you want to use as your filter');
+      String? pattern = await TextPromptDialog.show(
+          context, 'Enter the regular expression you want to use as your filter');
       if (pattern != null && mounted) {
         RegExp? regExp;
         try {
@@ -309,8 +315,8 @@ class _ThumbnailListState extends State<ThumbnailList> {
             _updateItems();
           });
         } else {
-          await InformationalDialog.showErrorMessage(context,
-              'Invalid regular expression: "$pattern"');
+          await InformationalDialog.showErrorMessage(
+              context, 'Invalid regular expression: "$pattern"');
         }
       }
     }
@@ -641,6 +647,7 @@ class _ButtonBar extends StatelessWidget {
         element.visitChildElements(visitor);
       }
     }
+
     context.visitChildElements(visitor);
     assert(result != null);
     return result!;
@@ -783,8 +790,7 @@ class _ThumbnailState extends State<Thumbnail> {
             icon: Icons.save,
             color: Colors.red,
           ),
-        if (widget.item.type == MediaType.video)
-          const VideoPlaySymbol(),
+        if (widget.item.type == MediaType.video) const VideoPlaySymbol(),
         if (widget.isSelected)
           DecoratedBox(
             decoration: BoxDecoration(border: Border.all(width: 10, color: Colors.white)),
