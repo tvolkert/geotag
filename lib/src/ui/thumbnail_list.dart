@@ -42,18 +42,26 @@ class _ThumbnailListState extends State<ThumbnailList> {
   bool _showOnlyMissingDate = false;
   bool _showOnlyMissingGeotag = false;
   bool _showOnlyMissingEvent = false;
+  bool _showOnlyPhotos = false;
+  bool _showOnlyVideos = false;
   RegExp? _showOnlyMatchingRegExp;
 
   static const double itemExtent = 175;
   static const MediaItemFilter _filterByDate = PredicateMediaItemFilter(_itemIsMissingDate);
   static const MediaItemFilter _filterByGeotag = PredicateMediaItemFilter(_itemIsMissingGeotag);
   static const MediaItemFilter _filterByEvent = PredicateMediaItemFilter(_itemIsMissingEvent);
+  static const MediaItemFilter _filterByPhoto = PredicateMediaItemFilter(_itemIsPhoto);
+  static const MediaItemFilter _filterByVideo = PredicateMediaItemFilter(_itemIsVideo);
 
   static bool _itemIsMissingDate(MediaItem item) => !item.hasDateTime;
 
   static bool _itemIsMissingGeotag(MediaItem item) => !item.hasLatlng;
 
   static bool _itemIsMissingEvent(MediaItem item) => !item.hasEvent;
+
+  static bool _itemIsPhoto(MediaItem item) => item.type == MediaType.photo;
+
+  static bool _itemIsVideo(MediaItem item) => item.type == MediaType.video;
 
   double? _calculateScrollToVisibleOffset(int index) {
     final double maxScrollOffset = math.max(0, _items.length * itemExtent - context.size!.width);
@@ -97,6 +105,12 @@ class _ThumbnailListState extends State<ThumbnailList> {
     }
     if (_showOnlyMissingEvent) {
       items = items.where(_filterByEvent);
+    }
+    if (_showOnlyPhotos) {
+      items = items.where(_filterByPhoto);
+    }
+    if (_showOnlyVideos) {
+      items = items.where(_filterByVideo);
     }
     if (_showOnlyMatchingRegExp != null) {
       items = items.where(_filterByRegExp(_showOnlyMatchingRegExp!));
@@ -191,6 +205,20 @@ class _ThumbnailListState extends State<ThumbnailList> {
   void _handleFilterByEvent() {
     setState(() {
       _showOnlyMissingEvent = !_showOnlyMissingEvent;
+      _updateItems();
+    });
+  }
+
+  void _handleFilterByPhoto() {
+    setState(() {
+      _showOnlyPhotos = !_showOnlyPhotos;
+      _updateItems();
+    });
+  }
+
+  void _handleFilterByVideo() {
+    setState(() {
+      _showOnlyVideos = !_showOnlyVideos;
       _updateItems();
     });
   }
@@ -434,6 +462,18 @@ class _ThumbnailListState extends State<ThumbnailList> {
                         tooltipMessage: 'Show only items missing an event',
                         isSelected: () => _showOnlyMissingEvent,
                         onPressed: _handleFilterByEvent,
+                      ),
+                      _ToggleButton(
+                        icon: Icons.camera,
+                        tooltipMessage: 'Show only photos',
+                        isSelected: () => _showOnlyPhotos,
+                        onPressed: _handleFilterByPhoto,
+                      ),
+                      _ToggleButton(
+                        icon: Icons.movie_outlined,
+                        tooltipMessage: 'Show only video',
+                        isSelected: () => _showOnlyVideos,
+                        onPressed: _handleFilterByVideo,
                       ),
                       _ToggleButton(
                         icon: Symbols.regular_expression,
