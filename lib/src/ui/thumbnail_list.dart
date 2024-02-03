@@ -415,28 +415,30 @@ class _ThumbnailListState extends State<ThumbnailList> {
               children: [
                 Flexible(
                   child: _ButtonBar(
+                    heading: 'Filter by',
                     buttons: <_ToggleButton>[
                       _ToggleButton(
                         icon: Icons.calendar_today,
-                        tooltipMessage: 'Show only missing date',
+                        tooltipMessage: 'Show only items missing a date',
                         isSelected: () => _showOnlyMissingDate,
                         onPressed: _handleFilterByDate,
                       ),
                       _ToggleButton(
                         icon: Icons.location_off,
-                        tooltipMessage: 'Show only missing geotag',
+                        tooltipMessage: 'Show only items missing a geotag',
                         isSelected: () => _showOnlyMissingGeotag,
                         onPressed: _handleFilterByGeotag,
                       ),
                       _ToggleButton(
                         icon: Icons.local_activity,
-                        tooltipMessage: 'Show only missing event',
+                        tooltipMessage: 'Show only items missing an event',
                         isSelected: () => _showOnlyMissingEvent,
                         onPressed: _handleFilterByEvent,
                       ),
                       _ToggleButton(
                         icon: Symbols.regular_expression,
-                        tooltipMessage: 'Show only filenames matching a regular expression (advanced)',
+                        tooltipMessage: 'Show only items whose filename matches '
+                            'a regular expression (advanced)',
                         isSelected: () => _showOnlyMatchingRegExp != null,
                         onPressed: _handleFilterByRegExp,
                       ),
@@ -446,6 +448,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
                 Flexible(
                   child: _ButtonBar(
                     alignment: MainAxisAlignment.end,
+                    heading: 'Sort by',
                     buttons: <_ToggleButton>[
                       _ToggleButton(
                         icon: Icons.calendar_today,
@@ -511,28 +514,51 @@ class _ThumbnailListState extends State<ThumbnailList> {
 
 class _ButtonBar extends StatelessWidget {
   const _ButtonBar({
+    required this.heading,
     required this.buttons,
     this.alignment = MainAxisAlignment.start,
   });
 
+  final String heading;
   final List<_ToggleButton> buttons;
   final MainAxisAlignment alignment;
 
+  void _handleButtonPressed(int index) {
+    if (index > 0) {
+      buttons[index - 1].onPressed();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return OverflowBar(
-      alignment: alignment,
-      children: <Widget>[
-        ToggleButtons(
-          borderColor: const Color(0xff777777),
-          selectedBorderColor: const Color(0xff777777),
-          color: const Color(0xff777777),
-          selectedColor: const Color(0xfff4f4f4),
-          isSelected: buttons.map<bool>((_ToggleButton button) => button.isSelected()).toList(),
-          onPressed: (int index) => buttons[index].onPressed(),
-          children: buttons,
-        ),
-      ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 5),
+      child: OverflowBar(
+        alignment: alignment,
+        children: <Widget>[
+          ToggleButtons(
+            borderColor: const Color(0xff777777),
+            selectedBorderColor: const Color(0xff777777),
+            color: const Color(0xff777777),
+            selectedColor: const Color(0xfff4f4f4),
+            isSelected: <bool>[
+              false,
+              ...buttons.map<bool>((_ToggleButton button) => button.isSelected()),
+            ],
+            onPressed: _handleButtonPressed,
+            children: <Widget>[
+              MouseRegion(
+                cursor: SystemMouseCursors.basic,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Text(heading),
+                ),
+              ),
+              ...buttons,
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
