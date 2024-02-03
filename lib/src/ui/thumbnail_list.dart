@@ -42,19 +42,18 @@ class _ThumbnailListState extends State<ThumbnailList> {
   late final FocusNode _focusNode;
   final ReentrantDetector _jumpToScrollCheck = ReentrantDetector();
   late IndexedMediaItemFilter _selectionFilter;
-  bool _showOnlyMissingDate = false;
-  bool _showOnlyMissingGeotag = false;
+  MediaItemFilter? _dateFilter;
+  MediaItemFilter? _geotagFilter;
   MediaItemFilter? _eventFilter;
-  bool _showOnlyPhotos = false;
-  bool _showOnlyVideos = false;
+  MediaItemFilter? _mediaTypeFilter;
   RegExp? _showOnlyMatchingRegExp;
 
   static const double itemExtent = 175;
-  static const MediaItemFilter _filterByDate = PredicateMediaItemFilter(_itemIsMissingDate);
-  static const MediaItemFilter _filterByGeotag = PredicateMediaItemFilter(_itemIsMissingGeotag);
+  static const MediaItemFilter _filterByNoDate = PredicateMediaItemFilter(_itemIsMissingDate);
+  static const MediaItemFilter _filterByNoGeotag = PredicateMediaItemFilter(_itemIsMissingGeotag);
   static const MediaItemFilter _filterByNoEvent = PredicateMediaItemFilter(_itemIsMissingEvent);
-  static const MediaItemFilter _filterByPhoto = PredicateMediaItemFilter(_itemIsPhoto);
-  static const MediaItemFilter _filterByVideo = PredicateMediaItemFilter(_itemIsVideo);
+  static const MediaItemFilter _filterByTypePhoto = PredicateMediaItemFilter(_itemIsPhoto);
+  static const MediaItemFilter _filterByTypeVideo = PredicateMediaItemFilter(_itemIsVideo);
 
   static bool _itemIsMissingDate(MediaItem item) => !item.hasDateTime;
 
@@ -100,20 +99,17 @@ class _ThumbnailListState extends State<ThumbnailList> {
 
   void _updateItems() {
     MediaItems items = MediaBinding.instance.items;
-    if (_showOnlyMissingDate) {
-      items = items.where(_filterByDate);
+    if (_dateFilter != null) {
+      items = items.where(_dateFilter!);
     }
-    if (_showOnlyMissingGeotag) {
-      items = items.where(_filterByGeotag);
+    if (_geotagFilter != null) {
+      items = items.where(_geotagFilter!);
     }
     if (_eventFilter != null) {
       items = items.where(_eventFilter!);
     }
-    if (_showOnlyPhotos) {
-      items = items.where(_filterByPhoto);
-    }
-    if (_showOnlyVideos) {
-      items = items.where(_filterByVideo);
+    if (_mediaTypeFilter != null) {
+      items = items.where(_mediaTypeFilter!);
     }
     if (_showOnlyMatchingRegExp != null) {
       items = items.where(_filterByRegExp(_showOnlyMatchingRegExp!));
@@ -193,14 +189,14 @@ class _ThumbnailListState extends State<ThumbnailList> {
 
   void _handleFilterByDate(BuildContext context) {
     setState(() {
-      _showOnlyMissingDate = !_showOnlyMissingDate;
+      _dateFilter = (_dateFilter != null) ? null : _filterByNoDate;
       _updateItems();
     });
   }
 
   void _handleFilterByGeotag(BuildContext context) {
     setState(() {
-      _showOnlyMissingGeotag = !_showOnlyMissingGeotag;
+      _geotagFilter = (_geotagFilter != null) ? null : _filterByNoGeotag;
       _updateItems();
     });
   }
@@ -281,14 +277,14 @@ class _ThumbnailListState extends State<ThumbnailList> {
 
   void _handleFilterByPhoto(BuildContext context) {
     setState(() {
-      _showOnlyPhotos = !_showOnlyPhotos;
+      _mediaTypeFilter = (_mediaTypeFilter == _filterByTypePhoto) ? null : _filterByTypePhoto;
       _updateItems();
     });
   }
 
   void _handleFilterByVideo(BuildContext context) {
     setState(() {
-      _showOnlyVideos = !_showOnlyVideos;
+      _mediaTypeFilter = (_mediaTypeFilter == _filterByTypeVideo) ? null : _filterByTypeVideo;
       _updateItems();
     });
   }
@@ -518,13 +514,13 @@ class _ThumbnailListState extends State<ThumbnailList> {
                       _ToggleButton(
                         icon: Icons.calendar_today,
                         tooltipMessage: 'Show only items missing a date',
-                        isSelected: () => _showOnlyMissingDate,
+                        isSelected: () => _dateFilter != null,
                         onPressed: _handleFilterByDate,
                       ),
                       _ToggleButton(
                         icon: Icons.location_off,
                         tooltipMessage: 'Show only items missing a geotag',
-                        isSelected: () => _showOnlyMissingGeotag,
+                        isSelected: () => _geotagFilter != null,
                         onPressed: _handleFilterByGeotag,
                       ),
                       _ToggleButton(
@@ -536,13 +532,13 @@ class _ThumbnailListState extends State<ThumbnailList> {
                       _ToggleButton(
                         icon: Icons.camera,
                         tooltipMessage: 'Show only photos',
-                        isSelected: () => _showOnlyPhotos,
+                        isSelected: () => _mediaTypeFilter == _filterByTypePhoto,
                         onPressed: _handleFilterByPhoto,
                       ),
                       _ToggleButton(
                         icon: Icons.movie_outlined,
                         tooltipMessage: 'Show only videos',
-                        isSelected: () => _showOnlyVideos,
+                        isSelected: () => _mediaTypeFilter == _filterByTypeVideo,
                         onPressed: _handleFilterByVideo,
                       ),
                       _ToggleButton(
