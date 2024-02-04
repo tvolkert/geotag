@@ -1,6 +1,6 @@
 // ignore_for_file: avoid_print
 
-import 'dart:math' as math;
+import 'dart:math' show max, min;
 
 import 'package:chicago/chicago.dart'
     show
@@ -70,12 +70,12 @@ class _ThumbnailListState extends State<ThumbnailList> {
   static bool _itemIsVideo(MediaItem item) => item.type == MediaType.video;
 
   double? _calculateScrollToVisibleOffset(int index) {
-    final double maxScrollOffset = math.max(0, _items.length * itemExtent - context.size!.width);
+    final double maxScrollOffset = max(0, _items.length * itemExtent - context.size!.width);
     const double minScrollOffset = 0;
     double leftScrollOffset = index * itemExtent;
     double rightScrollOffset = leftScrollOffset - context.size!.width + itemExtent;
-    leftScrollOffset = math.min(leftScrollOffset, maxScrollOffset);
-    rightScrollOffset = math.max(rightScrollOffset, minScrollOffset);
+    leftScrollOffset = min(leftScrollOffset, maxScrollOffset);
+    rightScrollOffset = max(rightScrollOffset, minScrollOffset);
     if (_scrollController.offset < rightScrollOffset) {
       return rightScrollOffset;
     } else if (_scrollController.offset > leftScrollOffset) {
@@ -210,14 +210,13 @@ class _ThumbnailListState extends State<ThumbnailList> {
     final RenderBox button = context.findRenderObject()! as RenderBox;
     final BuildContext overlayContext = Navigator.of(context).overlay!.context;
     final RenderBox overlay = overlayContext.findRenderObject()! as RenderBox;
-    const Offset offset = Offset.zero;
-    final RelativeRect position = RelativeRect.fromRect(
-      Rect.fromPoints(
-        button.localToGlobal(offset, ancestor: overlay),
-        button.localToGlobal(button.size.bottomRight(Offset.zero) + offset, ancestor: overlay),
-      ),
-      Offset.zero & overlay.size,
+    final Offset offset = Offset(min(0, (context.size!.width - kMinInteractiveDimension) / 2), 0);
+    final Rect buttonGlobalRect = Rect.fromPoints(
+      button.localToGlobal(offset, ancestor: overlay),
+      button.localToGlobal(button.size.bottomRight(Offset.zero) + offset, ancestor: overlay),
     );
+    final Rect overlayRect = Offset.zero & overlay.size;
+    final RelativeRect position = RelativeRect.fromRect(buttonGlobalRect, overlayRect);
     List<String> events = MediaBinding.instance.items
         .map<String?>((MediaItem item) => item.event)
         .whereNotNull()
