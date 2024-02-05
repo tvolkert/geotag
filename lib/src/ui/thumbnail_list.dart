@@ -50,11 +50,11 @@ class _ThumbnailListState extends State<ThumbnailList> {
   String _eventFilterValue = _removeEventFilterSyntheticValue;
 
   static const double itemExtent = 175;
-  static const MediaItemFilter _filterByNoDate = PredicateMediaItemFilter(_itemIsMissingDate);
-  static const MediaItemFilter _filterByNoGeotag = PredicateMediaItemFilter(_itemIsMissingGeotag);
-  static const MediaItemFilter _filterByNoEvent = PredicateMediaItemFilter(_itemIsMissingEvent);
-  static const MediaItemFilter _filterByTypePhoto = PredicateMediaItemFilter(_itemIsPhoto);
-  static const MediaItemFilter _filterByTypeVideo = PredicateMediaItemFilter(_itemIsVideo);
+  static const MediaItemFilter _filterByNoDate = PredicateMediaItemFilter(_itemIsMissingDate, debugName: 'date(none)');
+  static const MediaItemFilter _filterByNoGeotag = PredicateMediaItemFilter(_itemIsMissingGeotag, debugName: 'geo(none)');
+  static const MediaItemFilter _filterByNoEvent = PredicateMediaItemFilter(_itemIsMissingEvent, debugName: 'event(none)');
+  static const MediaItemFilter _filterByTypePhoto = PredicateMediaItemFilter(_itemIsPhoto, debugName: 'photo');
+  static const MediaItemFilter _filterByTypeVideo = PredicateMediaItemFilter(_itemIsVideo, debugName: 'video');
 
   static const String _removeEventFilterSyntheticValue = '__synthetic_event_remove_filter_';
   static const String _filterByNoEventSyntheticValue = '__synthetic_event_no_event_';
@@ -98,7 +98,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
   static PredicateMediaItemFilter _filterByRegExp(RegExp regExp) {
     return PredicateMediaItemFilter((MediaItem item) {
       return regExp.hasMatch(item.path);
-    });
+    }, debugName: 'matching(${regExp.pattern})');
   }
 
   void _updateItems() {
@@ -272,7 +272,10 @@ class _ThumbnailListState extends State<ThumbnailList> {
         } else if (chosenEvent == _filterByNoEventSyntheticValue) {
           _eventFilter = _filterByNoEvent;
         } else {
-          _eventFilter = PredicateMediaItemFilter((MediaItem item) => item.event == chosenEvent);
+          _eventFilter = PredicateMediaItemFilter(
+            (MediaItem item) => item.event == chosenEvent,
+            debugName: 'event($chosenEvent)',
+          );
         }
         _updateItems();
       });
@@ -512,6 +515,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 Flexible(
+                  flex: 6,
                   child: _ButtonBar(
                     heading: 'Filter by',
                     buttons: <_ToggleButton>[
@@ -556,6 +560,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
                   ),
                 ),
                 Flexible(
+                  flex: 4,
                   child: _ButtonBar(
                     alignment: MainAxisAlignment.end,
                     heading: 'Sort by',

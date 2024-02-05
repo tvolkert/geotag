@@ -61,4 +61,7 @@ final class _LastNMediaItemFilter extends MediaItemFilter {
     }
     return result;
   }
+
+  @override
+  String toString() => '<last $n>';
 }

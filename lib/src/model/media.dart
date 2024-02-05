@@ -533,7 +533,9 @@ abstract base class MediaItems extends MediaItemsView {
   /// that have their [MediaItem.isModified] bit set.
   ///
   /// The returned list will have its [parent] list set to this list.
-  MediaItems get whereModified => where(const PredicateMediaItemFilter(_isModified));
+  MediaItems get whereModified {
+    return where(const PredicateMediaItemFilter(_isModified, debugName: 'modified'));
+  }
 
   /// Returns a child media items list containing only those items in this list
   /// that pass the specified [filter].
@@ -997,12 +999,16 @@ abstract base class MediaItemFilter {
 }
 
 final class PredicateMediaItemFilter extends MediaItemFilter {
-  const PredicateMediaItemFilter(this.condition);
+  const PredicateMediaItemFilter(this.condition, {this.debugName});
 
   final Predicate<MediaItem> condition;
+  final String? debugName;
 
   @override
   Iterable<MediaItem> apply(List<MediaItem> source) => source.where(condition);
+
+  @override
+  String toString() => '<${debugName ?? 'condition'}>';
 }
 
 final class IndexedMediaItemFilter extends MediaItemFilter {
@@ -1120,6 +1126,9 @@ final class IndexedMediaItemFilter extends MediaItemFilter {
       _notifier?.notifyListeners();
     }
   }
+
+  @override
+  String toString() => '[${_indexes.join(',')}]';
 }
 
 final class _FilteredItemsWeakRef extends LinkedListEntry<_FilteredItemsWeakRef> {
@@ -1223,6 +1232,9 @@ final class FilteredMediaItems extends MediaItems {
     });
     _notifyStructureListeners();
   }
+
+  @override
+  String toString() => 'filtered($filter)';
 }
 
 class _AddFilesMessage {
