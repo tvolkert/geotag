@@ -377,6 +377,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
           TaskBinding.instance.onTaskCompleted();
         });
       });
+      _minimallyScrollToIndex(_selectedItems.indexes);
     }
   }
 
