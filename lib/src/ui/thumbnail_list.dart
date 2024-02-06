@@ -182,8 +182,11 @@ class _ThumbnailListState extends State<ThumbnailList> {
   void _handleSelectedItemsStructurechanged() {
     setState(() {
       // [build] references _selectedItems
+      if (_selectedItems.indexes.isEmpty && _items.isNotEmpty) {
+        _selectedItems.setIndex(0);
+      }
+      _minimallyScrollToIndex(_selectedItems.indexes);
     });
-    _minimallyScrollToIndex(_selectedItems.indexes);
   }
 
   void _handleFilterByDate(BuildContext context) {
@@ -452,7 +455,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
           _selectedItems.addIndex(index);
         }
       } else if (isPlatformCommandKeyPressed()) {
-        if (_selectedItems.containsIndex(index)) {
+        if (_selectedItems.containsIndex(index) && _selectedItems.indexes.length > 1) {
           _selectedItems.removeIndex(index);
         } else {
           _selectedItems.addIndex(index);
