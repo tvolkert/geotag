@@ -5,10 +5,7 @@ import 'dart:math' show max, min;
 import 'package:chicago/chicago.dart'
     show
         isPlatformCommandKeyPressed,
-        isShiftKeyPressed,
-        ListViewSelectionController,
-        SelectMode,
-        Span;
+        isShiftKeyPressed;
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -37,11 +34,10 @@ class ThumbnailList extends StatefulWidget {
 
 class _ThumbnailListState extends State<ThumbnailList> {
   late MediaItems _items;
+  late IndexedMediaItems _selectedItems;
   late final ScrollController _scrollController;
-  late final ListViewSelectionController _selectionController;
   late final FocusNode _focusNode;
   final ReentrantDetector _jumpToScrollCheck = ReentrantDetector();
-  late IndexedMediaItemFilter _selectionFilter;
   MediaItemFilter? _dateFilter;
   MediaItemFilter? _geotagFilter;
   MediaItemFilter? _eventFilter;
@@ -50,11 +46,16 @@ class _ThumbnailListState extends State<ThumbnailList> {
   String _eventFilterValue = _removeEventFilterSyntheticValue;
 
   static const double itemExtent = 175;
-  static const MediaItemFilter _filterByNoDate = PredicateMediaItemFilter(_itemIsMissingDate, debugName: 'date(none)');
-  static const MediaItemFilter _filterByNoGeotag = PredicateMediaItemFilter(_itemIsMissingGeotag, debugName: 'geo(none)');
-  static const MediaItemFilter _filterByNoEvent = PredicateMediaItemFilter(_itemIsMissingEvent, debugName: 'event(none)');
-  static const MediaItemFilter _filterByTypePhoto = PredicateMediaItemFilter(_itemIsPhoto, debugName: 'photo');
-  static const MediaItemFilter _filterByTypeVideo = PredicateMediaItemFilter(_itemIsVideo, debugName: 'video');
+  static const MediaItemFilter _filterByNoDate =
+      PredicateMediaItemFilter(_itemIsMissingDate, debugName: 'date(none)');
+  static const MediaItemFilter _filterByNoGeotag =
+      PredicateMediaItemFilter(_itemIsMissingGeotag, debugName: 'geo(none)');
+  static const MediaItemFilter _filterByNoEvent =
+      PredicateMediaItemFilter(_itemIsMissingEvent, debugName: 'event(none)');
+  static const MediaItemFilter _filterByTypePhoto =
+      PredicateMediaItemFilter(_itemIsPhoto, debugName: 'photo');
+  static const MediaItemFilter _filterByTypeVideo =
+      PredicateMediaItemFilter(_itemIsVideo, debugName: 'video');
 
   static const String _removeEventFilterSyntheticValue = '__synthetic_event_remove_filter_';
   static const String _filterByNoEventSyntheticValue = '__synthetic_event_no_event_';
@@ -101,7 +102,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
     }, debugName: 'matching(${regExp.pattern})');
   }
 
-  void _updateItems() {
+  void _updateItems({bool firstRun = false}) {
     MediaItems items = MediaBinding.instance.items;
     if (_dateFilter != null) {
       items = items.where(_dateFilter!);
@@ -120,7 +121,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
     }
 
     List<int> newSelectedItems = <int>[];
-    for (int i in _selectionController.selectedItems) {
+    for (int i in _selectedItems.indexes) {
       final int newIndex = items.indexOf(_items[i]);
       if (newIndex >= 0) {
         // The item only stays selected if it's in the new items view.
@@ -131,27 +132,23 @@ class _ThumbnailListState extends State<ThumbnailList> {
     // It's important that we update the selection *after* [_items] since
     // [_handleSelectionChanged] resolves the selection against the items.
     setState(() {
+      _items.removeStructureListener(_handleItemsStructurechanged);
       _items = items;
-      _selectionController.selectedRanges = newSelectedItems.toRanges();
-
-      double fromCurrent(double offset) => (offset - _scrollController.offset).abs();
-      double scrollToVisibleOffset = double.infinity;
-      bool isScrollNeeded = _selectionController.selectedItems.isNotEmpty;
-      for (int index in _selectionController.selectedItems) {
-        if (isScrollNeeded) {
-          final double? neededOffset = _calculateScrollToVisibleOffset(index);
-          if (neededOffset == null) {
-            isScrollNeeded = false;
-          } else if (fromCurrent(neededOffset) < fromCurrent(scrollToVisibleOffset)) {
-            scrollToVisibleOffset = neededOffset;
-          }
-        }
-      }
-      if (isScrollNeeded) {
-        assert(scrollToVisibleOffset.isFinite);
-        _scrollController.jumpTo(scrollToVisibleOffset);
+      _items.addStructureListener(_handleItemsStructurechanged);
+      _selectedItems.removeStructureListener(_handleSelectedItemsStructurechanged);
+      _selectedItems = _items.select(newSelectedItems);
+      _selectedItems.addStructureListener(_handleSelectedItemsStructurechanged);
+      _minimallyScrollToIndex(_selectedItems.indexes);
+      if (!firstRun) {
+        _setFeaturedItems();
+      } else {
+        SchedulerBinding.instance.addPostFrameCallback((Duration timeStamp) => _setFeaturedItems());
       }
     });
+  }
+
+  void _setFeaturedItems() {
+    GeotagHome.maybeOf(context)?.featuredItems = _selectedItems;
   }
 
   /// Scrolls the minimum distance necessary (possibly not at all) to ensure
@@ -176,19 +173,17 @@ class _ThumbnailListState extends State<ThumbnailList> {
     }
   }
 
-  void _updateSelectedItems() {
-    _selectionFilter.removeListener(_handleFilteredIndexesChanged);
-    _selectionFilter = IndexedMediaItemFilter(_selectionController.selectedItems);
-    _selectionFilter.addListener(_handleFilteredIndexesChanged);
-    final MediaItems selectedItems = _items.where(_selectionFilter);
-    GeotagHome.of(context).featuredItems = selectedItems;
+  void _handleItemsStructurechanged() {
+    setState(() {
+      // [build] references _items
+    });
   }
 
-  void _handleFilteredIndexesChanged() {
+  void _handleSelectedItemsStructurechanged() {
     setState(() {
-      _selectionController.selectedItems = _selectionFilter.indexes;
-      _minimallyScrollToIndex(_selectionFilter.indexes);
+      // [build] references _selectedItems
     });
+    _minimallyScrollToIndex(_selectedItems.indexes);
   }
 
   void _handleFilterByDate(BuildContext context) {
@@ -319,7 +314,10 @@ class _ThumbnailListState extends State<ThumbnailList> {
           });
         } else {
           await InformationalDialog.showErrorMessage(
-              context, 'Invalid regular expression: "$pattern"');
+            // ignore: use_build_context_synchronously
+            context,
+            'Invalid regular expression: "$pattern"',
+          );
         }
       }
     }
@@ -354,18 +352,39 @@ class _ThumbnailListState extends State<ThumbnailList> {
 
   void _handleDeleteSelectedItems() async {
     if (await ConfirmationDialog.confirmDeleteFiles(context)) {
-      _deleteItems(_selectionController.selectedItems.toList());
+      TaskBinding.instance.addTasks(_selectedItems.length);
+      final MediaItems toDelete = _items.select(_selectedItems.indexes);
+      setState(() {
+        final newNextIndex = _selectedItems.lastIndex + 1;
+        if (newNextIndex < _items.length) {
+          _selectedItems.setIndex(newNextIndex);
+        } else if (_selectedItems.firstIndex > 0) {
+          _selectedItems.setIndex(_selectedItems.firstIndex - 1);
+        } else {
+          _selectedItems.clearIndexes();
+          _focusNode.unfocus();
+        }
+      });
+      await _jumpToScrollCheck.runAsyncCallback(() async {
+        await toDelete.deleteFiles().listenAndWait((void _) {
+          TaskBinding.instance.onTaskCompleted();
+          setState(() {});
+        }, onError: (Object error, StackTrace stack) {
+          print('$error\n$stack');
+          TaskBinding.instance.onTaskCompleted();
+        });
+      });
     }
   }
 
   void _handleMoveSelectionLeft() {
-    final int newSelectedIndex = _selectionController.firstSelectedIndex - 1;
+    final int newSelectedIndex = _selectedItems.firstIndex - 1;
     if (newSelectedIndex >= 0) {
       setState(() {
         if (isShiftKeyPressed()) {
-          _selectionController.addSelectedIndex(newSelectedIndex);
+          _selectedItems.addIndex(newSelectedIndex);
         } else {
-          _selectionController.selectedIndex = newSelectedIndex;
+          _selectedItems.setIndex(newSelectedIndex);
         }
         _scrollToVisible(newSelectedIndex);
       });
@@ -373,13 +392,13 @@ class _ThumbnailListState extends State<ThumbnailList> {
   }
 
   void _handleMoveSelectionRight() {
-    final int newSelectedIndex = _selectionController.lastSelectedIndex + 1;
+    final int newSelectedIndex = _selectedItems.lastIndex + 1;
     if (newSelectedIndex < _items.length) {
       setState(() {
         if (isShiftKeyPressed()) {
-          _selectionController.addSelectedIndex(newSelectedIndex);
+          _selectedItems.addIndex(newSelectedIndex);
         } else {
-          _selectionController.selectedIndex = newSelectedIndex;
+          _selectedItems.setIndex(newSelectedIndex);
         }
         _scrollToVisible(newSelectedIndex);
       });
@@ -389,14 +408,14 @@ class _ThumbnailListState extends State<ThumbnailList> {
   void _handleSelectAll() {
     if (_items.isNotEmpty) {
       setState(() {
-        _selectionController.selectedRange = Span(0, _items.length - 1);
+        _selectedItems.fillIndexes();
       });
     }
   }
 
   KeyEventResult _handleKeyEvent(FocusNode focusNode, KeyEvent event) {
     KeyEventResult result = KeyEventResult.ignored;
-    if (_selectionController.selectedItems.isNotEmpty && event is! KeyUpEvent) {
+    if (_selectedItems.indexes.isNotEmpty && event is! KeyUpEvent) {
       if (event.logicalKey == LogicalKeyboardKey.delete ||
           event.logicalKey == LogicalKeyboardKey.backspace) {
         _handleDeleteSelectedItems();
@@ -427,53 +446,21 @@ class _ThumbnailListState extends State<ThumbnailList> {
   void _handleTap(int index) {
     setState(() {
       if (isShiftKeyPressed()) {
-        final int startIndex = _selectionController.firstSelectedIndex;
-        if (startIndex == -1) {
-          _selectionController.addSelectedIndex(index);
+        if (_selectedItems.canAddRange) {
+          _selectedItems.addIndexRangeTo(index);
         } else {
-          final int endIndex = _selectionController.lastSelectedIndex;
-          final Span range = Span(index, index > startIndex ? startIndex : endIndex);
-          _selectionController.selectedRange = range;
+          _selectedItems.addIndex(index);
         }
       } else if (isPlatformCommandKeyPressed()) {
-        if (_selectionController.isItemSelected(index)) {
-          _selectionController.removeSelectedIndex(index);
+        if (_selectedItems.containsIndex(index)) {
+          _selectedItems.removeIndex(index);
         } else {
-          _selectionController.addSelectedIndex(index);
+          _selectedItems.addIndex(index);
         }
       } else {
-        _selectionController.selectedIndex = index;
+        _selectedItems.setIndex(index);
       }
       _focusNode.requestFocus();
-    });
-  }
-
-  int? get selectedIndex => _selectionController.selectedItems.singleOrNull;
-
-  Future<void> _deleteItems(Iterable<int> indexes) async {
-    assert(indexes.length <= _items.length);
-    assert(indexes.every((int index) => index < _items.length));
-    TaskBinding.instance.addTasks(indexes.length);
-    setState(() {
-      final newNextIndex = _selectionController.lastSelectedIndex + 1;
-      if (newNextIndex < _items.length) {
-        _selectionController.selectedIndex = newNextIndex;
-      } else if (_selectionController.firstSelectedIndex > 0) {
-        _selectionController.selectedIndex = _selectionController.firstSelectedIndex - 1;
-      } else {
-        _selectionController.clearSelection();
-        _focusNode.unfocus();
-      }
-    });
-    await _jumpToScrollCheck.runAsyncCallback(() async {
-      final MediaItems filtered = _items.where(IndexedMediaItemFilter(indexes));
-      await filtered.deleteFiles().listenAndWait((void _) {
-        TaskBinding.instance.onTaskCompleted();
-        setState(() {});
-      }, onError: (Object error, StackTrace stack) {
-        print('$error\n$stack');
-        TaskBinding.instance.onTaskCompleted();
-      });
     });
   }
 
@@ -481,23 +468,19 @@ class _ThumbnailListState extends State<ThumbnailList> {
   void initState() {
     super.initState();
     _scrollController = ScrollController();
-    _selectionController = ListViewSelectionController(selectMode: SelectMode.multi);
-    _selectionController.addListener(_updateSelectedItems);
-    MediaBinding.instance.items.addStructureListener(_updateItems);
     _focusNode = FocusNode();
-    _updateItems();
-    _selectionFilter = IndexedMediaItemFilter(_selectionController.selectedItems);
-    _selectionFilter.addListener(_handleFilteredIndexesChanged);
+    _items = EmptyMediaItems();
+    _selectedItems = _items.select(<int>[]);
+    _items.addStructureListener(_handleItemsStructurechanged);
+    _selectedItems.addStructureListener(_handleSelectedItemsStructurechanged);
+    _updateItems(firstRun: true);
   }
 
   @override
   void dispose() {
-    _selectionFilter.removeListener(_handleFilteredIndexesChanged);
-    _selectionFilter.dispose();
+    _selectedItems.removeStructureListener(_handleSelectedItemsStructurechanged);
+    _items.removeStructureListener(_handleItemsStructurechanged);
     _focusNode.dispose();
-    MediaBinding.instance.items.removeStructureListener(_updateItems);
-    _selectionController.removeListener(_updateSelectedItems);
-    _selectionController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -612,7 +595,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
                         child: Thumbnail(
                           index: index,
                           item: _items[index],
-                          isSelected: _selectionController.isItemSelected(index),
+                          isSelected: _selectedItems.containsIndex(index),
                         ),
                       ),
                     );

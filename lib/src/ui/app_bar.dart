@@ -95,7 +95,10 @@ class _GeotagAppBarState extends State<GeotagAppBar> {
   }
 
   Future<void> _exportToFolder() async {
-    final MediaItems items = GeotagHome.of(context).featuredItems;
+    final MediaItems? items = GeotagHome.maybeOf(context)?.featuredItems;
+    if (items == null) {
+      throw StateError('No GeotagHome widget found in ancestry of GeotagAppBar');
+    }
     if (items.containsModified && !await ConfirmationDialog.confirmExportUnsavedItems(context)) {
       return;
     }

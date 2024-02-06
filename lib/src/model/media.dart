@@ -471,7 +471,7 @@ base class MediaItemsView {
 abstract base class MediaItems extends MediaItemsView {
   MediaItems._(List<MediaItem> items) : super._(items);
 
-  final LinkedList<_FilteredItemsWeakRef> _children = LinkedList<_FilteredItemsWeakRef>();
+  final LinkedList<_ChildItemsWeakRef> _children = LinkedList<_ChildItemsWeakRef>();
   MediaNotifier? _structureNotifier;
 
   /// The media items list whence this list was created.
@@ -540,25 +540,37 @@ abstract base class MediaItems extends MediaItemsView {
   /// Returns a child media items list containing only those items in this list
   /// that pass the specified [filter].
   MediaItems where(MediaItemFilter filter) {
-    final FilteredMediaItems result = FilteredMediaItems._(filter, this);
-    _children.add(_FilteredItemsWeakRef(result));
-    return result;
+    return _recordChildItems(FilteredMediaItems._(filter, this));
+  }
+
+  /// Returns a child media items list containing only the items located at the
+  /// specified [indexes].
+  ///
+  /// Once created, the chld items list may adjust the selected indexes. See
+  /// [IndexedMediaItems] for more information.
+  IndexedMediaItems select(Iterable<int> indexes) {
+    return _recordChildItems(IndexedMediaItems._(indexes, this));
+  }
+
+  T _recordChildItems<T extends ChildMediaItems>(T child) {
+    _children.add(_ChildItemsWeakRef(child));
+    return child;
   }
 
   /// Visits each child media items list that has been created and not yet
   /// garbage collected.
-  void _forEachChild(void Function(FilteredMediaItems items) visitor) {
-    List<_FilteredItemsWeakRef>? cleared;
-    for (_FilteredItemsWeakRef reference in List<_FilteredItemsWeakRef>.from(_children)) {
+  void _forEachChild(void Function(ChildMediaItems items) visitor) {
+    List<_ChildItemsWeakRef>? cleared;
+    for (_ChildItemsWeakRef reference in List<_ChildItemsWeakRef>.from(_children)) {
       if (reference.isCleared) {
-        cleared ??= <_FilteredItemsWeakRef>[];
+        cleared ??= <_ChildItemsWeakRef>[];
         cleared.add(reference);
       } else {
         visitor(reference.target);
       }
     }
     if (cleared != null) {
-      for (_FilteredItemsWeakRef reference in cleared) {
+      for (_ChildItemsWeakRef reference in cleared) {
         reference.unlink();
       }
     }
@@ -804,12 +816,11 @@ final class RootMediaItems extends MediaItems {
   @override
   set comparator(MediaItemComparator value) {
     if (value != _comparator) {
-      final MediaItemComparator oldComparator = _comparator;
       _comparator = value;
       final List<MediaItem> oldItems = List<MediaItem>.from(_items);
       _items.sort(value.compare);
-      _forEachChild((FilteredMediaItems items) {
-        items._handleParentSorted(oldItems, oldComparator);
+      _forEachChild((ChildMediaItems items) {
+        items.handleParentStructureChanged(oldItems);
       });
       _notifyStructureListeners();
     }
@@ -841,8 +852,8 @@ final class RootMediaItems extends MediaItems {
       final List<MediaItem> copy = List<MediaItem>.from(_items)..sort(_comparator.compare);
       return const ListEquality<MediaItem>().equals(_items, copy);
     }());
-    _forEachChild((FilteredMediaItems items) {
-      items._handleParentItemInsertedAt(index);
+    _forEachChild((ChildMediaItems items) {
+      items.handleParentItemInsertedAt(index);
     });
     _notifyStructureListeners();
   }
@@ -862,8 +873,8 @@ final class RootMediaItems extends MediaItems {
     _items.insert(newIndex, item);
     _metadataNotifiers[item.id]?.notifyListeners();
     _metadataNotifiers[null]?.notifyListeners();
-    _forEachChild((FilteredMediaItems items) {
-      items._handleParentItemUpdated(oldIndex, newIndex, removed);
+    _forEachChild((ChildMediaItems items) {
+      items.handleParentItemUpdated(oldIndex, newIndex, removed);
     });
     if (oldIndex != newIndex) {
       _notifyStructureListeners();
@@ -875,8 +886,8 @@ final class RootMediaItems extends MediaItems {
     final MediaItem removed = _items.removeAt(index);
     assert(removed._owner == this);
     removed._detach();
-    _forEachChild((FilteredMediaItems items) {
-      items._handleParentItemRemovedAt(index, removed);
+    _forEachChild((ChildMediaItems items) {
+      items.handleParentItemRemovedAt(index, removed);
     });
     _notifyStructureListeners();
     return removed;
@@ -976,26 +987,6 @@ abstract base class MediaItemFilter {
   const MediaItemFilter();
 
   Iterable<MediaItem> apply(List<MediaItem> source);
-
-  @mustCallSuper
-  void dispose() {}
-
-  @protected
-  @mustCallSuper
-  void handleParentItemInsertedAt(int index) {}
-
-  @protected
-  @mustCallSuper
-  void handleParentItemUpdated(int oldIndex, int newIndex, MediaItem beforeUpdate) {}
-
-  @protected
-  @mustCallSuper
-  void handleParentItemRemovedAt(int index, MediaItem removed) {}
-
-  @protected
-  @mustCallSuper
-  void handleParentSorted(List<MediaItem> oldItems, MediaItemComparator oldComparator,
-      List<MediaItem> items, MediaItemComparator comparator) {}
 }
 
 final class PredicateMediaItemFilter extends MediaItemFilter {
@@ -1011,65 +1002,264 @@ final class PredicateMediaItemFilter extends MediaItemFilter {
   String toString() => '<${debugName ?? 'condition'}>';
 }
 
-final class IndexedMediaItemFilter extends MediaItemFilter {
-  IndexedMediaItemFilter(Iterable<int> indexes) : _indexes = indexes.toList();
+final class _ChildItemsWeakRef extends LinkedListEntry<_ChildItemsWeakRef> {
+  _ChildItemsWeakRef(ChildMediaItems items)
+      : _reference = WeakReference<ChildMediaItems>(items);
 
-  final List<int> _indexes;
-  MediaNotifier? _notifier;
+  final WeakReference<ChildMediaItems> _reference;
 
-  Iterable<int> get indexes => _indexes;
+  bool get isCleared => _reference.target == null;
 
-  /// Adds a listener to be notified when the value of [indexes] changes.
-  void addListener(VoidCallback listener) {
-    _notifier ??= MediaNotifier();
-    _notifier!.addListener(listener);
-  }
+  ChildMediaItems get target => _reference.target!;
+}
 
-  /// Adds a listener that was added in [addListener].
-  void removeListener(VoidCallback listener) {
-    if (_notifier != null) {
-      _notifier!.removeListener(listener);
-      if (!_notifier!.hasListeners) {
-        _notifier!.dispose();
-        _notifier = null;
-      }
-    }
+/// A media items list that acts as a view of another _parent_ items list,
+/// exposing a subset of the items exposed by the parent.
+abstract base class ChildMediaItems extends MediaItems {
+  ChildMediaItems._(this.parent) : super._(<MediaItem>[]) {
+    updateItems();
   }
 
   @override
-  Iterable<MediaItem> apply(List<MediaItem> source) {
+  final MediaItems parent;
+
+  @override
+  RootMediaItems get root {
+    MediaItems root = parent;
+    while (root is ChildMediaItems) {
+      root = root.parent;
+    }
+    return root as RootMediaItems;
+  }
+
+  @protected
+  @nonVirtual
+  void updateItems() {
+    _items
+      ..clear()
+      ..addAll(applyView(parent._items));
+  }
+
+  /// Applies this object's view of the [parentItems], returning the subset of
+  /// items that are visible to this view.
+  @protected
+  Iterable<MediaItem> applyView(List<MediaItem> parentItems);
+
+  @override
+  MediaItemComparator get comparator => parent.comparator;
+
+  @override
+  set comparator(MediaItemComparator value) => parent.comparator = value;
+
+  @protected
+  @mustCallSuper
+  void handleParentItemInsertedAt(int index) {
+    updateItems();
+    final int localIndex = indexOf(parent[index]);
+    if (localIndex >= 0) {
+      _forEachChild((ChildMediaItems items) {
+        items.handleParentItemInsertedAt(localIndex);
+      });
+      _notifyStructureListeners();
+    }
+  }
+
+  @protected
+  @mustCallSuper
+  void handleParentItemUpdated(int oldIndex, int newIndex, MediaItem beforeUpdate) {
+    final int localOldIndex = indexOf(beforeUpdate);
+    updateItems();
+    final int localNewIndex = indexOf(parent[newIndex]);
+    if (localOldIndex == -1 && localNewIndex == -1) {
+      // This item isn't in our filter at all; ignore.
+      return;
+    }
+    _forEachChild((ChildMediaItems items) {
+      if (localOldIndex == -1) {
+        // Newly matching our filter.
+        items.handleParentItemInsertedAt(localNewIndex);
+      } else if (localNewIndex == -1) {
+        // Newly excluded by our filter.
+        items.handleParentItemRemovedAt(localOldIndex, beforeUpdate);
+      } else {
+        items.handleParentItemUpdated(localOldIndex, localNewIndex, beforeUpdate);
+      }
+    });
+    if (localOldIndex != localNewIndex) {
+      _notifyStructureListeners();
+    }
+  }
+
+  @protected
+  @mustCallSuper
+  void handleParentItemRemovedAt(int index, MediaItem removed) {
+    final int localIndex = indexOf(removed);
+    updateItems();
+    assert(indexOf(removed) == -1);
+    if (localIndex >= 0) {
+      _forEachChild((ChildMediaItems items) {
+        items.handleParentItemRemovedAt(localIndex, removed);
+      });
+      _notifyStructureListeners();
+    }
+  }
+
+  @protected
+  @mustCallSuper
+  void handleParentStructureChanged(List<MediaItem> oldItems) {
+    final List<MediaItem> localOldItms = List<MediaItem>.from(_items);
+    updateItems();
+    _forEachChild((ChildMediaItems items) {
+      items.handleParentStructureChanged(localOldItms);
+    });
+    _notifyStructureListeners();
+  }
+}
+
+/// A [ChildMediaItems] that delegates the logic of [applyView] to a
+/// [MediaItemFilter].
+final class FilteredMediaItems extends ChildMediaItems {
+  FilteredMediaItems._(this.filter, MediaItems parent) : super._(parent);
+
+  final MediaItemFilter filter;
+
+  @override
+  @protected
+  Iterable<MediaItem> applyView(List<MediaItem> parentItems) => filter.apply(parentItems);
+
+  @override
+  String toString() => 'filtered($filter)';
+}
+
+/// A [ChildMediaItems] that provides a mutable set of indexes that control the
+/// view of the parent's items.
+final class IndexedMediaItems extends ChildMediaItems {
+  IndexedMediaItems._(Iterable<int> indexes, MediaItems parent)
+      : _indexes = indexes.toList()..sort(), super._(parent);
+
+  final List<int> _indexes; // always sorted
+  int? _pivot;
+
+  static const ListEquality<int> listEquality = ListEquality<int>();
+
+  Iterable<int> get indexes => _indexes;
+
+  int get firstIndex => _indexes.isEmpty ? -1 : _indexes.first;
+
+  int get lastIndex => _indexes.isEmpty ? -1 : _indexes.last;
+
+  int _indexOfIndex(int index) {
+    return chicago.binarySearch<int>(_indexes, index, compare: (int a, int b) {
+      return a.compareTo(b);
+    });
+  }
+
+  bool containsIndex(int index) => _indexOfIndex(index) >= 0;
+
+  void setIndex(int index) {
+    _pivot = index;
+    _setIndexes(() => <int>[index], () => _indexes.length != 1 || _indexes[0] != index);
+  }
+
+  void setIndexes(Iterable<int> indexes) {
+    _pivot = null;
+    final List<int> newIndexes = indexes.toList()..sort();
+    _setIndexes(() => newIndexes, () => !listEquality.equals(_indexes, newIndexes));
+  }
+
+  void fillIndexes() {
+    _pivot = null;
+    _setIndexes(
+      () => List<int>.generate(parent.length, (int index) => index),
+      () => _indexes.length != parent.length,
+    );
+  }
+
+  void clearIndexes() {
+    _pivot = null;
+    _setIndexes(() => <int>[], () => _indexes.isNotEmpty);
+  }
+
+  void _setIndexes(Iterable<int> Function() indexes, bool Function() isUpdated) {
+    if (isUpdated()) {
+      _indexes..clear()..addAll(indexes());
+      final List<MediaItem> oldItems = List<MediaItem>.from(_items, growable: false);
+      updateItems();
+      _forEachChild((ChildMediaItems items) {
+        items.handleParentStructureChanged(oldItems);
+      });
+      _notifyStructureListeners();
+    }
+  }
+
+  void addIndex(int index) {
+    _pivot = index;
+    final int searchIndex = _indexOfIndex(index);
+    if (searchIndex < 0) {
+      final int insertIndex = -searchIndex - 1;
+      _indexes.insert(insertIndex, index);
+      _items.insert(insertIndex, parent._items[index]);
+      _forEachChild((ChildMediaItems items) {
+        items.handleParentItemInsertedAt(insertIndex);
+      });
+      _notifyStructureListeners();
+    }
+  }
+
+  void removeIndex(int index) {
+    _pivot = null;
+    final int removeIndex = _indexOfIndex(index);
+    if (removeIndex >= 0) {
+      _indexes.removeAt(removeIndex);
+      final MediaItem removed = _items.removeAt(removeIndex);
+      _forEachChild((ChildMediaItems items) {
+        items.handleParentItemRemovedAt(removeIndex, removed);
+      });
+      _notifyStructureListeners();
+    }
+  }
+
+  bool get canAddRange => _pivot != null;
+
+  void addIndexRangeTo(int index) {
+    if (!canAddRange) {
+      throw StateError('Cannot add range');
+    }
+    // TODO: Implement
+    throw UnimplementedError();
+  }
+
+  @override
+  @protected
+  Iterable<MediaItem> applyView(List<MediaItem> parentItems) {
     final List<MediaItem> result = <MediaItem>[];
     for (int index in _indexes) {
-      result.add(source[index]);
+      result.add(parentItems[index]);
     }
     return result;
   }
 
   @override
+  @protected
   void handleParentItemInsertedAt(int index) {
-    super.handleParentItemInsertedAt(index);
-    bool indexesChanged = false;
     for (int i = 0; i < _indexes.length; i++) {
       final int localIndex = _indexes[i];
       if (localIndex >= index) {
         _indexes[i] = localIndex + 1;
-        indexesChanged = true;
       }
     }
-    if (indexesChanged) {
-      _notifier?.notifyListeners();
-    }
+    super.handleParentItemInsertedAt(index);
   }
 
   @override
+  @protected
   void handleParentItemUpdated(int oldIndex, int newIndex, MediaItem beforeUpdate) {
-    super.handleParentItemUpdated(oldIndex, newIndex, beforeUpdate);
     bool indexesChanged = false;
     for (int i = 0; i < _indexes.length; i++) {
       final int localIndex = _indexes[i];
       if (localIndex == oldIndex) {
         _indexes[i] = newIndex;
-        indexesChanged = true;
+        indexesChanged = (oldIndex != newIndex);
       } else if (localIndex > oldIndex && localIndex <= newIndex) {
         _indexes[i] = localIndex - 1;
         indexesChanged = true;
@@ -1082,38 +1272,32 @@ final class IndexedMediaItemFilter extends MediaItemFilter {
       // Indexes may be out of order now. It's important we keep them sorted to
       // match the sort order dictated by the root comparator.
       _indexes.sort();
-      _notifier?.notifyListeners();
     }
+    super.handleParentItemUpdated(oldIndex, newIndex, beforeUpdate);
   }
 
   @override
+  @protected
   void handleParentItemRemovedAt(int index, MediaItem removed) {
-    super.handleParentItemRemovedAt(index, removed);
-    bool indexesChanged = false;
     for (int i = _indexes.length - 1; i >= 0; i--) {
       final int localIndex = _indexes[i];
       if (localIndex == index) {
         _indexes.removeAt(i);
-        indexesChanged = true;
       } else if (localIndex > index) {
         _indexes[i] = localIndex - 1;
-        indexesChanged = true;
       }
     }
-    if (indexesChanged) {
-      _notifier?.notifyListeners();
-    }
+    super.handleParentItemRemovedAt(index, removed);
   }
 
   @override
-  void handleParentSorted(List<MediaItem> oldItems, MediaItemComparator oldComparator,
-      List<MediaItem> items, MediaItemComparator comparator) {
-    super.handleParentSorted(oldItems, oldComparator, items, comparator);
+  @protected
+  void handleParentStructureChanged(List<MediaItem> oldItems) {
     bool indexesChanged = false;
     for (int i = 0; i < _indexes.length; i++) {
       final int localIndex = _indexes[i];
       final MediaItem item = oldItems[localIndex];
-      _indexes[i] = chicago.binarySearch<MediaItem>(items, item, compare: comparator.compare);
+      _indexes[i] = chicago.binarySearch<MediaItem>(parent._items, item, compare: comparator.compare);
       assert(_indexes[i] >= 0);
       if (_indexes[i] != localIndex) {
         indexesChanged = true;
@@ -1123,118 +1307,12 @@ final class IndexedMediaItemFilter extends MediaItemFilter {
       // Indexes may be out of order now. It's important we keep them sorted to
       // match the sort order dictated by the root comparator.
       _indexes.sort();
-      _notifier?.notifyListeners();
     }
+    super.handleParentStructureChanged(oldItems);
   }
 
   @override
-  String toString() => '[${_indexes.join(',')}]';
-}
-
-final class _FilteredItemsWeakRef extends LinkedListEntry<_FilteredItemsWeakRef> {
-  _FilteredItemsWeakRef(FilteredMediaItems items)
-      : _reference = WeakReference<FilteredMediaItems>(items);
-
-  final WeakReference<FilteredMediaItems> _reference;
-
-  bool get isCleared => _reference.target == null;
-
-  FilteredMediaItems get target => _reference.target!;
-}
-
-final class FilteredMediaItems extends MediaItems {
-  FilteredMediaItems._(this.filter, this.parent) : super._(<MediaItem>[]) {
-    _updateItems();
-  }
-
-  final MediaItemFilter filter;
-
-  @override
-  final MediaItems parent;
-
-  @override
-  RootMediaItems get root {
-    MediaItems root = parent;
-    while (root is FilteredMediaItems) {
-      root = root.parent;
-    }
-    return root as RootMediaItems;
-  }
-
-  void _updateItems() {
-    _items
-      ..clear()
-      ..addAll(filter.apply(parent._items));
-  }
-
-  @override
-  MediaItemComparator get comparator => parent.comparator;
-
-  @override
-  set comparator(MediaItemComparator value) => parent.comparator = value;
-
-  void _handleParentItemInsertedAt(int index) {
-    filter.handleParentItemInsertedAt(index);
-    _updateItems();
-    final int localIndex = indexOf(parent[index]);
-    if (localIndex >= 0) {
-      _forEachChild((FilteredMediaItems items) {
-        items._handleParentItemInsertedAt(localIndex);
-      });
-      _notifyStructureListeners();
-    }
-  }
-
-  void _handleParentItemUpdated(int oldIndex, int newIndex, MediaItem beforeUpdate) {
-    filter.handleParentItemUpdated(oldIndex, newIndex, beforeUpdate);
-    final int localOldIndex = indexOf(beforeUpdate);
-    _updateItems();
-    final int localNewIndex = indexOf(parent[newIndex]);
-    if (localOldIndex == -1 && localNewIndex == -1) {
-      // This item isn't in our filter at all; ignore.
-      return;
-    }
-    _forEachChild((FilteredMediaItems items) {
-      if (localOldIndex == -1) {
-        // Newly matching our filter.
-        items._handleParentItemInsertedAt(localNewIndex);
-      } else if (localNewIndex == -1) {
-        // Newly excluded by our filter.
-        items._handleParentItemRemovedAt(localOldIndex, beforeUpdate);
-      } else {
-        items._handleParentItemUpdated(localOldIndex, localNewIndex, beforeUpdate);
-      }
-    });
-    if (localOldIndex != localNewIndex) {
-      _notifyStructureListeners();
-    }
-  }
-
-  void _handleParentItemRemovedAt(int index, MediaItem removed) {
-    filter.handleParentItemRemovedAt(index, removed);
-    final int localIndex = indexOf(removed);
-    _updateItems();
-    assert(indexOf(removed) == -1);
-    if (localIndex >= 0) {
-      _forEachChild((FilteredMediaItems items) {
-        items._handleParentItemRemovedAt(localIndex, removed);
-      });
-      _notifyStructureListeners();
-    }
-  }
-
-  void _handleParentSorted(List<MediaItem> oldItems, MediaItemComparator oldComparator) {
-    filter.handleParentSorted(oldItems, oldComparator, parent._items, parent.comparator);
-    final List<MediaItem> localOldItms = List<MediaItem>.from(_items);
-    _updateItems();
-    _forEachChild((FilteredMediaItems items) {
-      items._handleParentSorted(localOldItms, oldComparator);
-    });
-    _notifyStructureListeners();
-  }
-
-  @override
-  String toString() => 'filtered($filter)';
+  String toString() => 'indexed([${_indexes.join(',')}])';
 }
 
 class _AddFilesMessage {

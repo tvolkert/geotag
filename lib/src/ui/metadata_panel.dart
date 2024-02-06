@@ -17,7 +17,7 @@ import 'date_time_editor.dart';
 class MetadataPanel extends StatefulWidget {
   const MetadataPanel(this.items, {super.key});
 
-  final MediaItemsView items;
+  final MediaItems items;
 
   @override
   State<MetadataPanel> createState() => _MetadataPanelState();
@@ -162,6 +162,13 @@ class _MetadataPanelState extends State<MetadataPanel> {
     }
   }
 
+  void _handleItemsChanged() {
+    setState(() {
+      _updateEventUiElement();
+      _updateLatlngUiElements();
+    });
+  }
+
   void setIsEditingEvent(bool value) {
     if (value != _isEditingEvent) {
       _isEditingEvent = value;
@@ -272,6 +279,7 @@ class _MetadataPanelState extends State<MetadataPanel> {
     dateTimeFocusNode = FocusNode();
     eventFocusNode = FocusNode();
     latlngFocusNode = FocusNode();
+    widget.items.addStructureListener(_handleItemsChanged);
     FocusManager.instance.addListener(_handleFocusChanged);
     webViewController = WebViewController()
       ..clearCache()
@@ -294,6 +302,10 @@ class _MetadataPanelState extends State<MetadataPanel> {
   @override
   void didUpdateWidget(covariant MetadataPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.items != widget.items) {
+      oldWidget.items.removeStructureListener(_handleItemsChanged);
+      widget.items.addStructureListener(_handleItemsChanged);
+    }
     _updateEventUiElement();
     _updateLatlngUiElements();
   }
@@ -308,6 +320,7 @@ class _MetadataPanelState extends State<MetadataPanel> {
   @override
   void dispose() {
     FocusManager.instance.removeListener(_handleFocusChanged);
+    widget.items.removeStructureListener(_handleItemsChanged);
     latlngFocusNode.dispose();
     eventFocusNode.dispose();
     dateTimeFocusNode.dispose();

@@ -23,6 +23,10 @@ class _PhotoPileState extends State<PhotoPile> {
 
   static const List<double> _rotations = <double>[0.05, -0.07];
 
+  void _handleItemsChanged() {
+    setState(() {});
+  }
+
   void _initAdjustments() {
     _adjustments.clear();
     for (int i = 0; i < widget.items.length; i++) {
@@ -33,13 +37,24 @@ class _PhotoPileState extends State<PhotoPile> {
   @override
   void initState() {
     super.initState();
+    widget.items.addStructureListener(_handleItemsChanged);
     _initAdjustments();
   }
 
   @override
   void didUpdateWidget(covariant PhotoPile oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.items != widget.items) {
+      oldWidget.items.removeStructureListener(_handleItemsChanged);
+      widget.items.addStructureListener(_handleItemsChanged);
+    }
     _initAdjustments();
+  }
+
+  @override
+  void dispose() {
+    widget.items.removeStructureListener(_handleItemsChanged);
+    super.dispose();
   }
 
   Widget _buildPhoto(int index, MediaItem item) {

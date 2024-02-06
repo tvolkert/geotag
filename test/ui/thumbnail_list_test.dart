@@ -86,7 +86,7 @@ Future<void> main() async {
     // Select the second and third thumbnails
     await tester.selectThumbnailsAt(<int>[1, 2]);
 
-    // Add an event to the last item
+    // Add an event to the selected items
     root[1]..event = 'event'..isModified = true..lastModified = tester.binding.clock.now();
     await root[1].commit();
     root[2]..event = 'event'..isModified = true..lastModified = tester.binding.clock.now();
@@ -106,7 +106,7 @@ Future<void> main() async {
     await tester.pump();
     expect(find.byType(Thumbnail), findsNWidgets(3));
 
-    // Select the second and third thumbnails
+    // Select the first and second thumbnails
     await tester.selectThumbnailsAt(<int>[0, 1]);
 
     // Delete the selected items

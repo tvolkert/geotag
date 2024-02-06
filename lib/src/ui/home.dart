@@ -18,12 +18,11 @@ class GeotagHome extends StatefulWidget {
   @override
   State<GeotagHome> createState() => _GeotagHomeState();
 
-  static HomeController of(BuildContext context, {bool introduceDependency = false}) {
-    if (introduceDependency) {
-      return context.dependOnInheritedWidgetOfExactType<_HomeScope>()!.state;
-    } else {
-      return context.getInheritedWidgetOfExactType<_HomeScope>()!.state;
-    }
+  static HomeController? maybeOf(BuildContext context, {bool introduceDependency = false}) {
+    final _HomeScope? scope = introduceDependency
+        ? context.dependOnInheritedWidgetOfExactType<_HomeScope>()
+        : context.getInheritedWidgetOfExactType<_HomeScope>();
+    return scope?.state;
   }
 }
 

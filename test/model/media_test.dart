@@ -238,7 +238,7 @@ Future<void> main() async {
     bool structureChanged = false;
     noGeo.addStructureListener(() => structureChanged = true);
     expect(noGeo.length, 3);
-    await root.where(IndexedMediaItemFilter(<int>[0])).deleteFiles().drain<void>();
+    await root.select(<int>[0]).deleteFiles().drain<void>();
     expect(noGeo.length, 2);
     expect(structureChanged, isTrue);
   });
@@ -256,8 +256,7 @@ Future<void> main() async {
 
   testGeotag('Indexed filter does not update or notify when item is updated and stays in place', (WidgetTester tester) async {
     final RootMediaItems root = await tester._populateItems();
-    final IndexedMediaItemFilter filter = IndexedMediaItemFilter(<int>[2]);
-    final MediaItems selected = root.where(filter);
+    final IndexedMediaItems selected = root.select(<int>[2]);
     bool structureChanged = false;
     selected.addStructureListener(() => structureChanged = true);
     expect(selected.length, 1);
@@ -265,14 +264,13 @@ Future<void> main() async {
     await root[0]._update((MediaItem item) => item.dateTimeOriginal = tester.binding.clock.now());
     expect(selected.length, 1);
     expect(structureChanged, isFalse);
-    expect(filter.indexes, <int>[2]);
+    expect(selected.indexes, <int>[2]);
   });
 
   testGeotag('Indexed filter updates but does not notify when different item is updated and moves', (WidgetTester tester) async {
     final RootMediaItems root = await tester._populateItems();
     root.comparator = const ByDate(Ascending());
-    final IndexedMediaItemFilter filter = IndexedMediaItemFilter(<int>[2]);
-    final MediaItems selected = root.where(filter);
+    final IndexedMediaItems selected = root.select(<int>[2]);
     bool structureChanged = false;
     selected.addStructureListener(() => structureChanged = true);
     expect(selected.length, 1);
@@ -280,15 +278,14 @@ Future<void> main() async {
     await root[0]._update((MediaItem item) => item.dateTimeOriginal = tester.binding.clock.now());
     expect(selected.length, 1);
     expect(structureChanged, isFalse);
-    expect(filter.indexes, <int>[1]);
+    expect(selected.indexes, <int>[1]);
     expect(selected.last.id, id);
   });
 
   testGeotag('Indexed filter updates but does not notify when selected item is updated and moves', (WidgetTester tester) async {
     final RootMediaItems root = await tester._populateItems();
     root.comparator = const ByDate(Ascending());
-    final IndexedMediaItemFilter filter = IndexedMediaItemFilter(<int>[1]);
-    final MediaItems selected = root.where(filter);
+    final IndexedMediaItems selected = root.select(<int>[1]);
     bool structureChanged = false;
     selected.addStructureListener(() => structureChanged = true);
     expect(selected.length, 1);
@@ -296,7 +293,7 @@ Future<void> main() async {
     await root[1]._update((MediaItem item) => item.dateTimeOriginal = DateTime.parse('2021-01-01'));
     expect(selected.length, 1);
     expect(structureChanged, isFalse);
-    expect(filter.indexes, <int>[4]);
+    expect(selected.indexes, <int>[4]);
     expect(selected.last.id, id);
   });
 
@@ -310,8 +307,7 @@ Future<void> main() async {
       images.oneByOneBlack,
       images.oneByOneBlackJpgWithGeo,
     ]).drain<void>();
-    final IndexedMediaItemFilter filter = IndexedMediaItemFilter(<int>[2]);
-    final MediaItems selected = root.where(filter);
+    final IndexedMediaItems selected = root.select(<int>[2]);
     bool structureChanged = false;
     selected.addStructureListener(() => structureChanged = true);
     final int id = selected.last.id;
@@ -319,42 +315,39 @@ Future<void> main() async {
     await root.addFiles(<String>[images.oneByOneBlackJpgWithDate]).drain<void>();
     expect(selected.length, 1);
     expect(structureChanged, isFalse);
-    expect(filter.indexes, <int>[3]);
+    expect(selected.indexes, <int>[3]);
     expect(selected.last.id, id);
   });
 
   testGeotag('Indexed filter updates but does not notify when other item is removed', (WidgetTester tester) async {
     final RootMediaItems root = await tester._populateItems();
-    final IndexedMediaItemFilter filter = IndexedMediaItemFilter(<int>[2]);
-    final MediaItems selected = root.where(filter);
+    final IndexedMediaItems selected = root.select(<int>[2]);
     bool structureChanged = false;
     final int id = selected.last.id;
     selected.addStructureListener(() => structureChanged = true);
     expect(selected.length, 1);
-    await root.where(IndexedMediaItemFilter(<int>[0])).deleteFiles().drain<void>();
+    await root.select(<int>[0]).deleteFiles().drain<void>();
     expect(selected.length, 1);
     expect(structureChanged, isFalse);
-    expect(filter.indexes, <int>[1]);
+    expect(selected.indexes, <int>[1]);
     expect(selected.last.id, id);
   });
 
   testGeotag('Indexed filter updates and notifies when selected item is removed', (WidgetTester tester) async {
     final RootMediaItems root = await tester._populateItems();
-    final IndexedMediaItemFilter filter = IndexedMediaItemFilter(<int>[2]);
-    final MediaItems selected = root.where(filter);
+    final IndexedMediaItems selected = root.select(<int>[2]);
     bool structureChanged = false;
     selected.addStructureListener(() => structureChanged = true);
     expect(selected.length, 1);
-    await root.where(IndexedMediaItemFilter(<int>[2])).deleteFiles().drain<void>();
+    await root.select(<int>[2]).deleteFiles().drain<void>();
     expect(selected.length, 0);
     expect(structureChanged, isTrue);
-    expect(filter.indexes, isEmpty);
+    expect(selected.indexes, isEmpty);
   });
 
   testGeotag('Indexed filter updates and notifies when comparator is changed', (WidgetTester tester) async {
     final RootMediaItems root = await tester._populateItems();
-    final IndexedMediaItemFilter filter = IndexedMediaItemFilter(<int>[4]);
-    final MediaItems selected = root.where(filter);
+    final IndexedMediaItems selected = root.select(<int>[4]);
     bool structureChanged = false;
     selected.addStructureListener(() => structureChanged = true);
     expect(selected.length, 1);
@@ -362,15 +355,14 @@ Future<void> main() async {
     root.comparator = const ByDate(Descending());
     expect(selected.length, 1);
     expect(structureChanged, isTrue);
-    expect(filter.indexes, <int>[0]);
+    expect(selected.indexes, <int>[0]);
     expect(selected.first.id, id);
   });
 
   testGeotag('Predicate->Indexed filter does not update or notify when item is updated and stays in place', (WidgetTester tester) async {
     final RootMediaItems root = await tester._populateItems();
     final MediaItems noGeo = root.where(const PredicateMediaItemFilter(_needsGeo));
-    final IndexedMediaItemFilter filter = IndexedMediaItemFilter(<int>[1]);
-    final MediaItems selected = noGeo.where(filter);
+    final IndexedMediaItems selected = noGeo.select(<int>[1]);
     bool structureChanged = false;
     selected.addStructureListener(() => structureChanged = true);
     expect(selected.length, 1);
@@ -378,15 +370,14 @@ Future<void> main() async {
     await root[0]._update((MediaItem item) => item.dateTimeOriginal = tester.binding.clock.now());
     expect(selected.length, 1);
     expect(structureChanged, isFalse);
-    expect(filter.indexes, <int>[1]);
+    expect(selected.indexes, <int>[1]);
   });
 
   testGeotag('Predicate->Indexed filter updates but does not notify when different item is updated and moves', (WidgetTester tester) async {
     final RootMediaItems root = await tester._populateItems();
     root.comparator = const ByDate(Ascending());
     final MediaItems noGeo = root.where(const PredicateMediaItemFilter(_needsGeo));
-    final IndexedMediaItemFilter filter = IndexedMediaItemFilter(<int>[1]);
-    final MediaItems selected = noGeo.where(filter);
+    final IndexedMediaItems selected = noGeo.select(<int>[1]);
     bool structureChanged = false;
     selected.addStructureListener(() => structureChanged = true);
     expect(selected.length, 1);
@@ -394,7 +385,7 @@ Future<void> main() async {
     await root[0]._update((MediaItem item) => item.dateTimeOriginal = tester.binding.clock.now());
     expect(selected.length, 1);
     expect(structureChanged, isFalse);
-    expect(filter.indexes, <int>[0]);
+    expect(selected.indexes, <int>[0]);
     expect(selected.last.id, id);
   });
 
@@ -402,8 +393,7 @@ Future<void> main() async {
     final RootMediaItems root = await tester._populateItems();
     root.comparator = const ByDate(Ascending());
     final MediaItems noGeo = root.where(const PredicateMediaItemFilter(_needsGeo));
-    final IndexedMediaItemFilter filter = IndexedMediaItemFilter(<int>[1]);
-    final MediaItems selected = noGeo.where(filter);
+    final IndexedMediaItems selected = noGeo.select(<int>[1]);
     bool structureChanged = false;
     selected.addStructureListener(() => structureChanged = true);
     expect(selected.length, 1);
@@ -411,15 +401,14 @@ Future<void> main() async {
     await root[1]._update((MediaItem item) => item.dateTimeOriginal = DateTime.parse('2023-01-01'));
     expect(selected.length, 1);
     expect(structureChanged, isFalse);
-    expect(filter.indexes, <int>[2]);
+    expect(selected.indexes, <int>[2]);
     expect(selected.last.id, id);
   });
 
   testGeotag('Predicate->Indexed filter updates but does not notify when another item is updated to newly match the predicate', (WidgetTester tester) async {
     final RootMediaItems root = await tester._populateItems();
     final MediaItems yesGeo = root.where(const PredicateMediaItemFilter(_hasGeo));
-    final IndexedMediaItemFilter filter = IndexedMediaItemFilter(<int>[1]);
-    final MediaItems selected = yesGeo.where(filter);
+    final IndexedMediaItems selected = yesGeo.select(<int>[1]);
     bool structureChanged = false;
     selected.addStructureListener(() => structureChanged = true);
     expect(selected.length, 1);
@@ -427,36 +416,34 @@ Future<void> main() async {
     await root[0]._update((MediaItem item) => item.latlng = '0,0');
     expect(selected.length, 1);
     expect(structureChanged, isFalse);
-    expect(filter.indexes, <int>[2]);
+    expect(selected.indexes, <int>[2]);
     expect(selected.last.id, id);
   });
 
   testGeotag('Predicate->Indexed filter updates and notifies when selected item is updated to no longer match the predicate', (WidgetTester tester) async {
     final RootMediaItems root = await tester._populateItems();
     final MediaItems noEvent = root.where(const PredicateMediaItemFilter(_needsEvent));
-    final IndexedMediaItemFilter filter = IndexedMediaItemFilter(<int>[4]);
-    final MediaItems selected = noEvent.where(filter);
+    final IndexedMediaItems selected = noEvent.select(<int>[4]);
     bool structureChanged = false;
     selected.addStructureListener(() => structureChanged = true);
     expect(selected.length, 1);
     await root[4]._update((MediaItem item) => item.event = 'event');
     expect(selected.length, 0);
     expect(structureChanged, isTrue);
-    expect(filter.indexes, <int>[]);
+    expect(selected.indexes, <int>[]);
   });
 
   testGeotag('Predicate->Indexed filter does not update nor notify when another item is updated to still not match the predicate', (WidgetTester tester) async {
     final RootMediaItems root = await tester._populateItems();
     final MediaItems yesGeo = root.where(const PredicateMediaItemFilter(_hasGeo));
-    final IndexedMediaItemFilter filter = IndexedMediaItemFilter(<int>[1]);
-    final MediaItems selected = yesGeo.where(filter);
+    final IndexedMediaItems selected = yesGeo.select(<int>[1]);
     bool structureChanged = false;
     selected.addStructureListener(() => structureChanged = true);
     expect(selected.length, 1);
     await root[0]._update((MediaItem item) => item.event = 'event');
     expect(selected.length, 1);
     expect(structureChanged, isFalse);
-    expect(filter.indexes, <int>[1]);
+    expect(selected.indexes, <int>[1]);
   });
 
   testGeotag('Predicate->Indexed filter updates but does not notify when item is inserted', (WidgetTester tester) async {
@@ -470,8 +457,7 @@ Future<void> main() async {
       images.oneByOneBlackJpgWithGeo,
     ]).drain<void>();
     final MediaItems noGeo = root.where(const PredicateMediaItemFilter(_needsGeo));
-    final IndexedMediaItemFilter filter = IndexedMediaItemFilter(<int>[1]);
-    final MediaItems selected = noGeo.where(filter);
+    final IndexedMediaItems selected = noGeo.select(<int>[1]);
     bool structureChanged = false;
     selected.addStructureListener(() => structureChanged = true);
     final int id = selected.last.id;
@@ -479,45 +465,42 @@ Future<void> main() async {
     await root.addFiles(<String>[images.oneByOneBlackJpgWithDate]).drain<void>();
     expect(selected.length, 1);
     expect(structureChanged, isFalse);
-    expect(filter.indexes, <int>[2]);
+    expect(selected.indexes, <int>[2]);
     expect(selected.last.id, id);
   });
 
   testGeotag('Predicate->Indexed filter updates but does not notify when other item is removed', (WidgetTester tester) async {
     final RootMediaItems root = await tester._populateItems();
     final MediaItems noGeo = root.where(const PredicateMediaItemFilter(_needsGeo));
-    final IndexedMediaItemFilter filter = IndexedMediaItemFilter(<int>[2]);
-    final MediaItems selected = noGeo.where(filter);
+    final IndexedMediaItems selected = noGeo.select(<int>[2]);
     bool structureChanged = false;
     selected.addStructureListener(() => structureChanged = true);
     final int id = selected.last.id;
     expect(selected.length, 1);
-    await root.where(IndexedMediaItemFilter(<int>[0])).deleteFiles().drain<void>();
+    await root.select(<int>[0]).deleteFiles().drain<void>();
     expect(selected.length, 1);
     expect(structureChanged, isFalse);
-    expect(filter.indexes, <int>[1]);
+    expect(selected.indexes, <int>[1]);
     expect(selected.last.id, id);
   });
 
   testGeotag('Predicate->Indexed filter updates and notifies when selected item is removed', (WidgetTester tester) async {
     final RootMediaItems root = await tester._populateItems();
     final MediaItems noGeo = root.where(const PredicateMediaItemFilter(_needsGeo));
-    final IndexedMediaItemFilter filter = IndexedMediaItemFilter(<int>[2]);
-    final MediaItems selected = noGeo.where(filter);
+    final IndexedMediaItems selected = noGeo.select(<int>[2]);
     bool structureChanged = false;
     selected.addStructureListener(() => structureChanged = true);
     expect(selected.length, 1);
-    await root.where(IndexedMediaItemFilter(<int>[2])).deleteFiles().drain<void>();
+    await root.select(<int>[2]).deleteFiles().drain<void>();
     expect(selected.length, 0);
     expect(structureChanged, isTrue);
-    expect(filter.indexes, isEmpty);
+    expect(selected.indexes, isEmpty);
   });
 
   testGeotag('Predicate->Indexed filter updates and notifies when comparator is changed', (WidgetTester tester) async {
     final RootMediaItems root = await tester._populateItems();
     final MediaItems noGeo = root.where(const PredicateMediaItemFilter(_needsGeo));
-    final IndexedMediaItemFilter filter = IndexedMediaItemFilter(<int>[2]);
-    final MediaItems selected = noGeo.where(filter);
+    final IndexedMediaItems selected = noGeo.select(<int>[2]);
     bool structureChanged = false;
     selected.addStructureListener(() => structureChanged = true);
     expect(selected.length, 1);
@@ -525,15 +508,14 @@ Future<void> main() async {
     root.comparator = const ByDate(Descending());
     expect(selected.length, 1);
     expect(structureChanged, isTrue);
-    expect(filter.indexes, <int>[0]);
+    expect(selected.indexes, <int>[0]);
     expect(selected.first.id, id);
   });
 
   testGeotag('Indexed->Predicate filter updates and notifies when comparator is changed and relative index order changes', (WidgetTester tester) async {
     final RootMediaItems root = await tester._populateItems();
     root.comparator = const ByDate(Ascending());
-    final IndexedMediaItemFilter filter = IndexedMediaItemFilter(<int>[2, 3]);
-    final MediaItems selected = root.where(filter);
+    final IndexedMediaItems selected = root.select(<int>[2, 3]);
     final MediaItems noGeo = selected.where(const PredicateMediaItemFilter(_needsGeo));
     bool structureChanged = false;
     noGeo.addStructureListener(() => structureChanged = true);
@@ -542,7 +524,7 @@ Future<void> main() async {
     root.comparator = const ByDate(Descending());
     expect(noGeo.length, 1);
     expect(structureChanged, isTrue);
-    expect(filter.indexes, <int>[1, 2]);
+    expect(selected.indexes, <int>[1, 2]);
     expect(noGeo.first.id, id);
     root[2].event = 'test event';
     await root[2].commit();
@@ -551,8 +533,7 @@ Future<void> main() async {
   testGeotag('Indexed->Predicate filter updates and notifies when selected item is updated and moves and relative index order changes', (WidgetTester tester) async {
     final RootMediaItems root = await tester._populateItems();
     root.comparator = const ByDate(Ascending());
-    final IndexedMediaItemFilter filter = IndexedMediaItemFilter(<int>[0, 1]);
-    final MediaItems selected = root.where(filter);
+    final IndexedMediaItems selected = root.select(<int>[0, 1]);
     final MediaItems noGeo = selected.where(const PredicateMediaItemFilter(_needsGeo));
     bool structureChanged = false;
     noGeo.addStructureListener(() => structureChanged = true);
@@ -563,7 +544,7 @@ Future<void> main() async {
     await root[0].commit();
     expect(noGeo.length, 2);
     expect(structureChanged, isTrue);
-    expect(filter.indexes, <int>[0, 2]);
+    expect(selected.indexes, <int>[0, 2]);
     expect(noGeo[0].id, whiteId);
     expect(noGeo[1].id, blackId);
   });
