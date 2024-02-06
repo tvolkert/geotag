@@ -1,37 +1,19 @@
-// ignore_for_file: avoid_print
-
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 
 import 'src/bindings/app.dart';
-import 'src/ui/home.dart';
+import 'src/ui/app.dart';
 
 void main() {
   runZonedGuarded<void>(
     () async {
       await GeotagAppBinding.ensureInitialized();
-      runApp(const Geotagger());
+      runApp(const GeotagApp());
     },
     (Object error, StackTrace stack) {
       debugPrint('Caught unhandled error by zone error handler.');
       debugPrint('$error\n$stack');
     },
   );
-}
-
-class Geotagger extends StatelessWidget {
-  const Geotagger({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Geotagger',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-      ),
-      home: const GeotagHome(),
-    );
-  }
 }
