@@ -18,7 +18,9 @@ import '../extensions/iterable.dart';
 import '../extensions/stream.dart';
 import '../foundation/base.dart';
 import '../foundation/reentrant_detector.dart';
+import '../intents/move_selection.dart';
 import '../model/media.dart';
+import 'app.dart';
 import 'dialogs.dart';
 import 'home.dart';
 import 'video_player.dart';
@@ -37,6 +39,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
   late IndexedMediaItems _selectedItems;
   late final ScrollController _scrollController;
   late final FocusNode _focusNode;
+  late final ActionsRegistration _actionsRegistration;
   final ReentrantDetector _jumpToScrollCheck = ReentrantDetector();
   MediaItemFilter? _dateFilter;
   MediaItemFilter? _geotagFilter;
@@ -381,23 +384,9 @@ class _ThumbnailListState extends State<ThumbnailList> {
     }
   }
 
-  void _handleMoveSelectionLeft() {
-    final int newSelectedIndex = _selectedItems.firstIndex - 1;
-    if (newSelectedIndex >= 0) {
-      setState(() {
-        if (isShiftKeyPressed()) {
-          _selectedItems.addIndex(newSelectedIndex);
-        } else {
-          _selectedItems.setIndex(newSelectedIndex);
-        }
-        _scrollToVisible(newSelectedIndex);
-      });
-    }
-  }
-
-  void _handleMoveSelectionRight() {
-    final int newSelectedIndex = _selectedItems.lastIndex + 1;
-    if (newSelectedIndex < _items.length) {
+  void _handleMoveSelection(MoveSelectionIntent intent) {
+    final int newSelectedIndex = intent.getNewSelectedIndex(_selectedItems);
+    if (newSelectedIndex >= 0 && newSelectedIndex < _items.length) {
       setState(() {
         if (isShiftKeyPressed()) {
           _selectedItems.addIndex(newSelectedIndex);
@@ -423,12 +412,6 @@ class _ThumbnailListState extends State<ThumbnailList> {
       if (event.logicalKey == LogicalKeyboardKey.delete ||
           event.logicalKey == LogicalKeyboardKey.backspace) {
         _handleDeleteSelectedItems();
-        result = KeyEventResult.handled;
-      } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-        _handleMoveSelectionLeft();
-        result = KeyEventResult.handled;
-      } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-        _handleMoveSelectionRight();
         result = KeyEventResult.handled;
       } else if (event.logicalKey == LogicalKeyboardKey.keyD) {
         _handleSortByDate(context);
@@ -472,7 +455,7 @@ class _ThumbnailListState extends State<ThumbnailList> {
   void initState() {
     super.initState();
     _scrollController = ScrollController();
-    _focusNode = FocusNode();
+    _focusNode = FocusNode(debugLabel: 'ThumbnailList');
     _items = EmptyMediaItems();
     _selectedItems = _items.select(<int>[]);
     _items.addStructureListener(_handleItemsStructurechanged);
@@ -481,7 +464,18 @@ class _ThumbnailListState extends State<ThumbnailList> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    SchedulerBinding.instance.addPostFrameCallback((Duration timeStamp) {
+      _actionsRegistration = GeotagApp.of(context).registerActions(<Type, Action<Intent>>{
+        MoveSelectionIntent: _MoveSelectionAction(this),
+      });
+    });
+  }
+
+  @override
   void dispose() {
+    _actionsRegistration.dispose();
     _selectedItems.removeStructureListener(_handleSelectedItemsStructurechanged);
     _items.removeStructureListener(_handleItemsStructurechanged);
     _focusNode.dispose();
@@ -611,6 +605,22 @@ class _ThumbnailListState extends State<ThumbnailList> {
         ],
       ),
     );
+  }
+}
+
+class _MoveSelectionAction extends ContextAction<MoveSelectionIntent> {
+  _MoveSelectionAction(this._state);
+
+  final _ThumbnailListState _state;
+
+  @override
+  bool isEnabled(MoveSelectionIntent intent, [BuildContext? context]) {
+    return _state._items.length > 1 && !Navigator.of(context!).canPop();
+  }
+
+  @override
+  void invoke(MoveSelectionIntent intent, [BuildContext? context]) {
+    _state._handleMoveSelection(intent);
   }
 }
 

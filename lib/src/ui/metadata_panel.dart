@@ -29,7 +29,6 @@ class _MetadataPanelState extends State<MetadataPanel> {
   final Completer<void> _onMapLoaded = Completer<void>();
   late TextEditingController eventController;
   late TextEditingController latlngController;
-  late FocusNode dateTimeFocusNode;
   late FocusNode eventFocusNode;
   late FocusNode latlngFocusNode;
   late final WebViewController webViewController;
@@ -276,9 +275,8 @@ class _MetadataPanelState extends State<MetadataPanel> {
     super.initState();
     eventController = TextEditingController();
     latlngController = TextEditingController();
-    dateTimeFocusNode = FocusNode();
-    eventFocusNode = FocusNode();
-    latlngFocusNode = FocusNode();
+    eventFocusNode = FocusNode(debugLabel: 'MetadataPanel.event');
+    latlngFocusNode = FocusNode(debugLabel: 'MetadataPanel.latlng');
     widget.items.addStructureListener(_handleItemsChanged);
     FocusManager.instance.addListener(_handleFocusChanged);
     webViewController = WebViewController()
@@ -323,7 +321,6 @@ class _MetadataPanelState extends State<MetadataPanel> {
     widget.items.removeStructureListener(_handleItemsChanged);
     latlngFocusNode.dispose();
     eventFocusNode.dispose();
-    dateTimeFocusNode.dispose();
     latlngController.dispose();
     eventController.dispose();
     super.dispose();

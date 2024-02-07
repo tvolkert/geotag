@@ -59,7 +59,7 @@ class _GeotagHomeState extends State<GeotagHome> implements HomeController {
   @override
   void initState() {
     super.initState();
-    _focusNode = FocusNode();
+    _focusNode = FocusNode(debugLabel: 'Home');
   }
 
   @override

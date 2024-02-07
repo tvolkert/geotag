@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../intents/move_selection.dart';
 import 'home.dart';
 
 class GeotagApp extends StatefulWidget {
@@ -15,11 +17,12 @@ class GeotagApp extends StatefulWidget {
 }
 
 abstract interface class GeotagAppController {
-  ShortcutRegistration registerShortcuts(Map<ShortcutActivator, Intent> shortcuts);
+  ShortcutsRegistration registerShortcuts(Map<ShortcutActivator, Intent> shortcuts);
+  ActionsRegistration registerActions(Map<Type, Action<Intent>> actions);
 }
 
-class ShortcutRegistration {
-  ShortcutRegistration._(this._shortcuts, this._state);
+class ShortcutsRegistration {
+  ShortcutsRegistration._(this._shortcuts, this._state);
 
   final Map<ShortcutActivator, Intent> _shortcuts;
   _GeotagAppState? _state;
@@ -28,33 +31,67 @@ class ShortcutRegistration {
     if (_state == null) {
       throw StateError('registration has already been disposed');
     }
-    _state!._removeRegistration(this);
+    _state!._removeShortcutsRegistration(this);
+    _state = null;
+  }
+}
+
+class ActionsRegistration {
+  ActionsRegistration._(this._actions, this._state);
+
+  final Map<Type, Action<Intent>> _actions;
+  _GeotagAppState? _state;
+
+  void dispose() {
+    if (_state == null) {
+      throw StateError('registration has already been disposed');
+    }
+    _state!._removeActionsRegistration(this);
     _state = null;
   }
 }
 
 class _GeotagAppState extends State<GeotagApp> implements GeotagAppController {
-  final List<ShortcutRegistration> _shortcutRegistrations = <ShortcutRegistration>[];
+  final List<ShortcutsRegistration> _shortcutsRegistrations = <ShortcutsRegistration>[];
+  final List<ActionsRegistration> _actionsRegistrations = <ActionsRegistration>[];
   _AppScope? _scope;
 
-  void _removeRegistration(ShortcutRegistration registration) {
+  void _removeShortcutsRegistration(ShortcutsRegistration registration) {
     setState(() {
-      _shortcutRegistrations.remove(registration);
+      _shortcutsRegistrations.remove(registration);
+    });
+  }
+
+  void _removeActionsRegistration(ActionsRegistration registration) {
+    setState(() {
+      _actionsRegistrations.remove(registration);
     });
   }
 
   @override
-  ShortcutRegistration registerShortcuts(Map<ShortcutActivator, Intent> shortcuts) {
-    final ShortcutRegistration registration = ShortcutRegistration._(Map<ShortcutActivator, Intent>.from(shortcuts), this);
+  ShortcutsRegistration registerShortcuts(Map<ShortcutActivator, Intent> shortcuts) {
+    final ShortcutsRegistration registration = ShortcutsRegistration._(Map<ShortcutActivator, Intent>.from(shortcuts), this);
     setState(() {
-      _shortcutRegistrations.add(registration);
+      _shortcutsRegistrations.add(registration);
     });
     return registration;
   }
 
   @override
+  ActionsRegistration registerActions(Map<Type, Action<Intent>> actions) {
+    final ActionsRegistration registration = ActionsRegistration._(Map<Type, Action<Intent>>.from(actions), this);
+    setState(() {
+      _actionsRegistrations.add(registration);
+    });
+    return registration;
+  }
+  
+  @override
   void dispose() {
-    for (final ShortcutRegistration registration in _shortcutRegistrations) {
+    for (final ShortcutsRegistration registration in _shortcutsRegistrations) {
+      registration.dispose();
+    }
+    for (final ActionsRegistration registration in _actionsRegistrations) {
       registration.dispose();
     }
     super.dispose();
@@ -75,8 +112,15 @@ class _GeotagAppState extends State<GeotagApp> implements GeotagAppController {
       theme: ThemeData(primarySwatch: Colors.blue),
       shortcuts: <ShortcutActivator, Intent>{
         ...WidgetsApp.defaultShortcuts,
-        for (final ShortcutRegistration registration in _shortcutRegistrations)
+        const SingleActivator(LogicalKeyboardKey.arrowLeft): const MoveSelectionIntent.backward(),
+        const SingleActivator(LogicalKeyboardKey.arrowRight): const MoveSelectionIntent.forward(),
+        for (final ShortcutsRegistration registration in _shortcutsRegistrations)
           ...registration._shortcuts,
+      },
+      actions: <Type, Action<Intent>>{
+        ...WidgetsApp.defaultActions,
+        for (final ActionsRegistration registration in _actionsRegistrations)
+          ...registration._actions,
       },
     );
   }
