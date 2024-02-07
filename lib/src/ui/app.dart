@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../intents/delete.dart';
 import '../intents/move_selection.dart';
+import '../intents/select_all.dart';
+import '../intents/sort.dart';
 import 'home.dart';
 
 class GeotagApp extends StatefulWidget {
@@ -112,8 +115,20 @@ class _GeotagAppState extends State<GeotagApp> implements GeotagAppController {
       theme: ThemeData(primarySwatch: Colors.blue),
       shortcuts: <ShortcutActivator, Intent>{
         ...WidgetsApp.defaultShortcuts,
+
+        // Selection
         const SingleActivator(LogicalKeyboardKey.arrowLeft): const MoveSelectionIntent.backward(),
         const SingleActivator(LogicalKeyboardKey.arrowRight): const MoveSelectionIntent.forward(),
+        const SingleActivator(LogicalKeyboardKey.keyA, meta: true): const SelectAllIntent(),
+
+        // Sorting
+        const SingleActivator(LogicalKeyboardKey.keyD): const SortIntent(SortKey.date),
+        const SingleActivator(LogicalKeyboardKey.keyF): const SortIntent(SortKey.filename),
+        const SingleActivator(LogicalKeyboardKey.keyI): const SortIntent(SortKey.itemId),
+
+        const SingleActivator(LogicalKeyboardKey.backspace): const DeleteIntent(),
+        const SingleActivator(LogicalKeyboardKey.delete): const DeleteIntent(),
+
         for (final ShortcutsRegistration registration in _shortcutsRegistrations)
           ...registration._shortcuts,
       },

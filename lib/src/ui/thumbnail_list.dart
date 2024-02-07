@@ -18,7 +18,10 @@ import '../extensions/iterable.dart';
 import '../extensions/stream.dart';
 import '../foundation/base.dart';
 import '../foundation/reentrant_detector.dart';
+import '../intents/delete.dart';
 import '../intents/move_selection.dart';
+import '../intents/select_all.dart';
+import '../intents/sort.dart';
 import '../model/media.dart';
 import 'app.dart';
 import 'dialogs.dart';
@@ -38,7 +41,6 @@ class _ThumbnailListState extends State<ThumbnailList> {
   late MediaItems _items;
   late IndexedMediaItems _selectedItems;
   late final ScrollController _scrollController;
-  late final FocusNode _focusNode;
   late final ActionsRegistration _actionsRegistration;
   final ReentrantDetector _jumpToScrollCheck = ReentrantDetector();
   MediaItemFilter? _dateFilter;
@@ -368,7 +370,6 @@ class _ThumbnailListState extends State<ThumbnailList> {
           _selectedItems.setIndex(_selectedItems.firstIndex - 1);
         } else {
           _selectedItems.clearIndexes();
-          _focusNode.unfocus();
         }
       });
       await _jumpToScrollCheck.runAsyncCallback(() async {
@@ -406,30 +407,6 @@ class _ThumbnailListState extends State<ThumbnailList> {
     }
   }
 
-  KeyEventResult _handleKeyEvent(FocusNode focusNode, KeyEvent event) {
-    KeyEventResult result = KeyEventResult.ignored;
-    if (_selectedItems.indexes.isNotEmpty && event is! KeyUpEvent) {
-      if (event.logicalKey == LogicalKeyboardKey.delete ||
-          event.logicalKey == LogicalKeyboardKey.backspace) {
-        _handleDeleteSelectedItems();
-        result = KeyEventResult.handled;
-      } else if (event.logicalKey == LogicalKeyboardKey.keyD) {
-        _handleSortByDate(context);
-        result = KeyEventResult.handled;
-      } else if (event.logicalKey == LogicalKeyboardKey.keyF) {
-        _handleSortByFilename(context);
-        result = KeyEventResult.handled;
-      } else if (event.logicalKey == LogicalKeyboardKey.keyI) {
-        _handleSortById(context);
-        result = KeyEventResult.handled;
-      } else if (event.logicalKey == LogicalKeyboardKey.keyA && isPlatformCommandKeyPressed()) {
-        _handleSelectAll();
-        result = KeyEventResult.handled;
-      }
-    }
-    return result;
-  }
-
   void _handleTap(int index) {
     setState(() {
       if (isShiftKeyPressed()) {
@@ -447,7 +424,6 @@ class _ThumbnailListState extends State<ThumbnailList> {
       } else {
         _selectedItems.setIndex(index);
       }
-      _focusNode.requestFocus();
     });
   }
 
@@ -455,7 +431,6 @@ class _ThumbnailListState extends State<ThumbnailList> {
   void initState() {
     super.initState();
     _scrollController = ScrollController();
-    _focusNode = FocusNode(debugLabel: 'ThumbnailList');
     _items = EmptyMediaItems();
     _selectedItems = _items.select(<int>[]);
     _items.addStructureListener(_handleItemsStructurechanged);
@@ -468,7 +443,10 @@ class _ThumbnailListState extends State<ThumbnailList> {
     super.didChangeDependencies();
     SchedulerBinding.instance.addPostFrameCallback((Duration timeStamp) {
       _actionsRegistration = GeotagApp.of(context).registerActions(<Type, Action<Intent>>{
+        DeleteIntent: _DeleteSelectedItemsAction(this),
         MoveSelectionIntent: _MoveSelectionAction(this),
+        SelectAllIntent: _SelectAllAction(this),
+        SortIntent: _SortAction(this),
       });
     });
   }
@@ -478,7 +456,6 @@ class _ThumbnailListState extends State<ThumbnailList> {
     _actionsRegistration.dispose();
     _selectedItems.removeStructureListener(_handleSelectedItemsStructurechanged);
     _items.removeStructureListener(_handleItemsStructurechanged);
-    _focusNode.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -577,34 +554,46 @@ class _ThumbnailListState extends State<ThumbnailList> {
               thumbVisibility: true,
               trackVisibility: true,
               thickness: 12,
-              child: Focus(
-                focusNode: _focusNode,
-                onKeyEvent: _handleKeyEvent,
-                child: ListView.builder(
-                  itemExtent: itemExtent,
-                  controller: _scrollController,
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _items.length,
-                  itemBuilder: (BuildContext context, int index) {
-                    return Padding(
-                      padding: const EdgeInsets.all(5),
-                      child: GestureDetector(
-                        onTap: () => _handleTap(index),
-                        child: Thumbnail(
-                          index: index,
-                          item: _items[index],
-                          isSelected: _selectedItems.containsIndex(index),
-                        ),
+              child: ListView.builder(
+                itemExtent: itemExtent,
+                controller: _scrollController,
+                scrollDirection: Axis.horizontal,
+                itemCount: _items.length,
+                itemBuilder: (BuildContext context, int index) {
+                  return Padding(
+                    padding: const EdgeInsets.all(5),
+                    child: GestureDetector(
+                      onTap: () => _handleTap(index),
+                      child: Thumbnail(
+                        index: index,
+                        item: _items[index],
+                        isSelected: _selectedItems.containsIndex(index),
                       ),
-                    );
-                  },
-                ),
+                    ),
+                  );
+                },
               ),
             ),
           ),
         ],
       ),
     );
+  }
+}
+
+class _DeleteSelectedItemsAction extends ContextAction<DeleteIntent> {
+  _DeleteSelectedItemsAction(this._state);
+
+  final _ThumbnailListState _state;
+
+  @override
+  bool isEnabled(DeleteIntent intent, [BuildContext? context]) {
+    return _state._selectedItems.isNotEmpty && !Navigator.of(context!).canPop();
+  }
+
+  @override
+  void invoke(DeleteIntent intent, [BuildContext? context]) {
+    _state._handleDeleteSelectedItems();
   }
 }
 
@@ -615,12 +604,53 @@ class _MoveSelectionAction extends ContextAction<MoveSelectionIntent> {
 
   @override
   bool isEnabled(MoveSelectionIntent intent, [BuildContext? context]) {
-    return _state._items.length > 1 && !Navigator.of(context!).canPop();
+    return _state._items.length > 1
+        && _state._selectedItems.isNotEmpty
+        && !Navigator.of(context!).canPop();
   }
 
   @override
   void invoke(MoveSelectionIntent intent, [BuildContext? context]) {
     _state._handleMoveSelection(intent);
+  }
+}
+
+class _SelectAllAction extends ContextAction<SelectAllIntent> {
+  _SelectAllAction(this._state);
+
+  final _ThumbnailListState _state;
+
+  @override
+  bool isEnabled(SelectAllIntent intent, [BuildContext? context]) {
+    return _state._items.isNotEmpty && !Navigator.of(context!).canPop();
+  }
+
+  @override
+  void invoke(SelectAllIntent intent, [BuildContext? context]) {
+    _state._handleSelectAll();
+  }
+}
+
+class _SortAction extends ContextAction<SortIntent> {
+  _SortAction(this._state);
+
+  final _ThumbnailListState _state;
+
+  @override
+  bool isEnabled(SortIntent intent, [BuildContext? context]) {
+    return MediaBinding.instance.items.isNotEmpty && !Navigator.of(context!).canPop();
+  }
+
+  @override
+  void invoke(SortIntent intent, [BuildContext? context]) {
+    switch (intent.key) {
+      case SortKey.date:
+        _state._handleSortByDate(context!);
+      case SortKey.filename:
+        _state._handleSortByFilename(context!);
+      case SortKey.itemId:
+        _state._handleSortById(context!);
+    }
   }
 }
 
