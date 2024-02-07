@@ -749,11 +749,10 @@ abstract base class MediaItems extends MediaItemsView {
         File target = parent.childFile(basename);
         for (int i = 1; target.existsSync(); i++) {
           // Resolve collision
-          // TODO: put the parents before the file extension
+          // TODO: put the parens before the file extension
           target = parent.childFile('$basename ($i)');
         }
-        // https://github.com/flutter/flutter/issues/140763
-        await message.fs.file(path).copy(target.path);
+        message.fs.file(path).copySync(target.path);
         yield row;
       } catch (error, stack) {
         yield* Stream<DbRow>.error(WrappedError(error, 'While processing ${item.path}}'), stack);
@@ -1225,8 +1224,38 @@ final class IndexedMediaItems extends ChildMediaItems {
     if (!canAddRange) {
       throw StateError('Cannot add range');
     }
-    // TODO: Implement
-    throw UnimplementedError();
+    if (index < 0 || index >= parent.length) {
+      throw ArgumentError('out of bounds: $index');
+    }
+    final int pivot = _pivot!;
+    final List<int> candidateIndexes = index <= pivot
+        ? List<int>.generate(pivot - index, (int i) => index + i)
+        : List<int>.generate(index - pivot, (int i) => pivot + 1 + i);
+    bool itemWasInserted = false;
+    if (candidateIndexes.isNotEmpty) {
+      int insertIndex = _indexOfIndex(candidateIndexes.first);
+      if (insertIndex < 0) {
+        insertIndex = -insertIndex - 1;
+      }
+      for (final int candidateIndex in candidateIndexes) {
+        while (insertIndex < _indexes.length && _indexes[insertIndex] < candidateIndex) {
+          insertIndex++;
+        }
+        if (insertIndex == _indexes.length || _indexes[insertIndex] > candidateIndex) {
+          itemWasInserted = true;
+          _indexes.insert(insertIndex, candidateIndex);
+          _items.insert(insertIndex, parent._items[candidateIndex]);
+          _forEachChild((ChildMediaItems items) {
+            items.handleParentItemInsertedAt(insertIndex);
+          });
+        }
+        insertIndex++;
+      }
+    }
+    _pivot = index;
+    if (itemWasInserted) {
+      _notifyStructureListeners();
+    }
   }
 
   @override

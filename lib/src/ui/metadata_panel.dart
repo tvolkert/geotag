@@ -404,7 +404,6 @@ class _MetadataPanelState extends State<MetadataPanel> {
         MetadataField(
           icon: Icons.local_activity,
           child: Expanded(
-            // TODO: figure out why space is getting handled by `Home`
             child: TextField(
               controller: eventController,
               focusNode: eventFocusNode,
