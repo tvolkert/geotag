@@ -9,7 +9,6 @@ import 'package:chicago/chicago.dart'
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:flutter/services.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../bindings/media.dart';
@@ -441,13 +440,11 @@ class _ThumbnailListState extends State<ThumbnailList> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    SchedulerBinding.instance.addPostFrameCallback((Duration timeStamp) {
-      _actionsRegistration = GeotagApp.of(context).registerActions(<Type, Action<Intent>>{
-        DeleteIntent: _DeleteSelectedItemsAction(this),
-        MoveSelectionIntent: _MoveSelectionAction(this),
-        SelectAllIntent: _SelectAllAction(this),
-        SortIntent: _SortAction(this),
-      });
+    _actionsRegistration = GeotagApp.of(context).registerActions(<Type, Action<Intent>>{
+      DeleteIntent: _DeleteSelectedItemsAction(this),
+      MoveSelectionIntent: _MoveSelectionAction(this),
+      SelectAllIntent: _SelectAllAction(this),
+      SortIntent: _SortAction(this),
     });
   }
 

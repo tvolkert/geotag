@@ -4,12 +4,14 @@ import 'dart:ui' as ui;
 import 'package:file/file.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart' as vp;
 
 import '../bindings/files.dart';
 import '../extensions/duration.dart';
 import '../model/media.dart';
+import 'app.dart';
 
 class VideoPlaySymbol extends StatelessWidget {
   const VideoPlaySymbol({super.key});
@@ -39,29 +41,20 @@ class VideoPlaySymbol extends StatelessWidget {
   }
 }
 
-final class VideoPlayerPlayPauseController {
-  VoidCallback? _onPlayPause;
-
-  void playPause() {
-    _onPlayPause?.call();
-  }
-}
-
 class VideoPlayer extends StatefulWidget {
   VideoPlayer({
     super.key,
     required this.item,
-    required this.playPauseController,
   }) : assert(item.type == MediaType.video);
 
   final MediaItem item;
-  final VideoPlayerPlayPauseController playPauseController;
 
   @override
   State<VideoPlayer> createState() => _VideoPlayerState();
 }
 
 class _VideoPlayerState extends State<VideoPlayer> {
+  late final ActionsRegistration _actionsRegistration;
   late vp.VideoPlayerController _controller;
   bool _isControllerInitialized = false;
 
@@ -91,7 +84,14 @@ class _VideoPlayerState extends State<VideoPlayer> {
   void initState() {
     super.initState();
     _initializeVideoController();
-    widget.playPauseController._onPlayPause = _handlePlayPause;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _actionsRegistration = GeotagApp.of(context).registerActions(<Type, Action<Intent>>{
+      ActivateIntent: _PlayPauseAction(this),
+    });
   }
 
   @override
@@ -104,15 +104,11 @@ class _VideoPlayerState extends State<VideoPlayer> {
       _controller.dispose();
       _initializeVideoController();
     }
-    if (widget.playPauseController != oldWidget.playPauseController) {
-      oldWidget.playPauseController._onPlayPause = null;
-      widget.playPauseController._onPlayPause = _handlePlayPause;
-    }
   }
 
   @override
   void dispose() {
-    widget.playPauseController._onPlayPause = null;
+    _actionsRegistration.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -144,6 +140,22 @@ class _VideoPlayerState extends State<VideoPlayer> {
       color: Colors.black,
       child: result,
     );
+  }
+}
+
+class _PlayPauseAction extends ContextAction<ActivateIntent> {
+  _PlayPauseAction(this._state);
+
+  final _VideoPlayerState _state;
+
+  @override
+  bool isEnabled(ActivateIntent intent, [BuildContext? context]) {
+    return _state._isControllerInitialized && !Navigator.of(context!).canPop();
+  }
+
+  @override
+  void invoke(ActivateIntent intent, [BuildContext? context]) {
+    _state._handlePlayPause();
   }
 }
 

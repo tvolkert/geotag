@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import '../intents/delete.dart';
@@ -60,22 +61,35 @@ class _GeotagAppState extends State<GeotagApp> implements GeotagAppController {
   _AppScope? _scope;
 
   void _removeShortcutsRegistration(ShortcutsRegistration registration) {
-    setState(() {
-      _shortcutsRegistrations.remove(registration);
+    // Avoid calling setState during a build phase or during tree finalization
+    SchedulerBinding.instance.addPostFrameCallback((Duration timeStamp) {
+      if (mounted) {
+        setState(() {
+          _shortcutsRegistrations.remove(registration);
+        });
+      }
     });
   }
 
   void _removeActionsRegistration(ActionsRegistration registration) {
-    setState(() {
-      _actionsRegistrations.remove(registration);
+    // Avoid calling setState during a build phase or during tree finalization
+    SchedulerBinding.instance.addPostFrameCallback((Duration timeStamp) {
+      if (mounted) {
+        setState(() {
+          _actionsRegistrations.remove(registration);
+        });
+      }
     });
   }
 
   @override
   ShortcutsRegistration registerShortcuts(Map<ShortcutActivator, Intent> shortcuts) {
     final ShortcutsRegistration registration = ShortcutsRegistration._(Map<ShortcutActivator, Intent>.from(shortcuts), this);
-    setState(() {
-      _shortcutsRegistrations.add(registration);
+    // Avoid calling setState during a build phase
+    SchedulerBinding.instance.addPostFrameCallback((Duration timeStamp) {
+      setState(() {
+        _shortcutsRegistrations.add(registration);
+      });
     });
     return registration;
   }
@@ -83,8 +97,11 @@ class _GeotagAppState extends State<GeotagApp> implements GeotagAppController {
   @override
   ActionsRegistration registerActions(Map<Type, Action<Intent>> actions) {
     final ActionsRegistration registration = ActionsRegistration._(Map<Type, Action<Intent>>.from(actions), this);
-    setState(() {
-      _actionsRegistrations.add(registration);
+    // Avoid calling setState during a build phase
+    SchedulerBinding.instance.addPostFrameCallback((Duration timeStamp) {
+      setState(() {
+        _actionsRegistrations.add(registration);
+      });
     });
     return registration;
   }
@@ -116,18 +133,24 @@ class _GeotagAppState extends State<GeotagApp> implements GeotagAppController {
       shortcuts: <ShortcutActivator, Intent>{
         ...WidgetsApp.defaultShortcuts,
 
+        // Override activation intents to not include repeats
+        const SingleActivator(LogicalKeyboardKey.enter, includeRepeats: false): const ActivateIntent(),
+        const SingleActivator(LogicalKeyboardKey.numpadEnter, includeRepeats: false): const ActivateIntent(),
+        const SingleActivator(LogicalKeyboardKey.space, includeRepeats: false): const ActivateIntent(),
+
         // Selection
         const SingleActivator(LogicalKeyboardKey.arrowLeft): const MoveSelectionIntent.backward(),
         const SingleActivator(LogicalKeyboardKey.arrowRight): const MoveSelectionIntent.forward(),
-        const SingleActivator(LogicalKeyboardKey.keyA, meta: true): const SelectAllIntent(),
+        const SingleActivator(LogicalKeyboardKey.keyA, meta: true, includeRepeats: false): const SelectAllIntent(),
 
         // Sorting
-        const SingleActivator(LogicalKeyboardKey.keyD): const SortIntent(SortKey.date),
-        const SingleActivator(LogicalKeyboardKey.keyF): const SortIntent(SortKey.filename),
-        const SingleActivator(LogicalKeyboardKey.keyI): const SortIntent(SortKey.itemId),
+        const SingleActivator(LogicalKeyboardKey.keyD, includeRepeats: false): const SortIntent(SortKey.date),
+        const SingleActivator(LogicalKeyboardKey.keyF, includeRepeats: false): const SortIntent(SortKey.filename),
+        const SingleActivator(LogicalKeyboardKey.keyI, includeRepeats: false): const SortIntent(SortKey.itemId),
 
-        const SingleActivator(LogicalKeyboardKey.backspace): const DeleteIntent(),
-        const SingleActivator(LogicalKeyboardKey.delete): const DeleteIntent(),
+        // Delete
+        const SingleActivator(LogicalKeyboardKey.backspace, includeRepeats: false): const DeleteIntent(),
+        const SingleActivator(LogicalKeyboardKey.delete, includeRepeats: false): const DeleteIntent(),
 
         for (final ShortcutsRegistration registration in _shortcutsRegistrations)
           ...registration._shortcuts,

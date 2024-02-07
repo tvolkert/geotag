@@ -11,11 +11,9 @@ class PreviewPanel extends StatefulWidget {
   const PreviewPanel({
     super.key,
     required this.items,
-    required this.playPauseController,
   });
 
   final MediaItems items;
-  final VideoPlayerPlayPauseController playPauseController;
 
   @override
   State<PreviewPanel> createState() => _PreviewPanelState();
@@ -64,10 +62,7 @@ class _PreviewPanelState extends State<PreviewPanel> {
         case MediaType.photo:
           result = SinglePhoto(path: item.photoPath);
         case MediaType.video:
-          return VideoPlayer(
-            item: item,
-            playPauseController: widget.playPauseController,
-          );
+          return VideoPlayer(item: item);
       }
     } else {
       result = PhotoPile(items: _last3);
