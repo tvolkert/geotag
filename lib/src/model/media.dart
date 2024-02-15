@@ -9,9 +9,10 @@ import 'package:file/chroot.dart';
 import 'package:file/file.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
-import 'package:geotag/src/extensions/iterable.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart' as sqflite;
 
+import '../extensions/file_system_entity.dart';
+import '../extensions/iterable.dart';
 import '../foundation/base.dart';
 import '../foundation/isolates.dart';
 import '../bindings/clock.dart';
@@ -745,14 +746,18 @@ abstract base class MediaItems extends MediaItemsView {
           parent.createSync(recursive: true);
         }
         final String path = item.path;
-        final String basename = message.fs.file(path).basename;
-        File target = parent.childFile(basename);
+        final File file = message.fs.file(path);
+        final String extension = file.extension;
+        String basenameWithoutExtension = file.basenameWithoutExtension;
+        if (basenameWithoutExtension.contains('-Enhanced-NR')) {
+          basenameWithoutExtension = basenameWithoutExtension.replaceAll('-Enhanced-NR', '');
+        }
+        File target = parent.childFile('$basenameWithoutExtension$extension');
         for (int i = 1; target.existsSync(); i++) {
           // Resolve collision
-          // TODO: put the parens before the file extension
-          target = parent.childFile('$basename ($i)');
+          target = parent.childFile('$basenameWithoutExtension ($i)$extension');
         }
-        message.fs.file(path).copySync(target.path);
+        file.copySync(target.path);
         yield row;
       } catch (error, stack) {
         yield* Stream<DbRow>.error(WrappedError(error, 'While processing ${item.path}}'), stack);

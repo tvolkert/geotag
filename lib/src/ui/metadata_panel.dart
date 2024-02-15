@@ -189,7 +189,7 @@ class _MetadataPanelState extends State<MetadataPanel> {
   Future<void> _updateEvent(MediaItem item, String? event) async {
     item
       ..event = event
-      ..isModified = true
+      // ..isModified = true // event doesn't get written to file metadata
       ..lastModified = ClockBinding.instance.now();
     await item.commit();
   }

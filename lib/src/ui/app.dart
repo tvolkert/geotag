@@ -140,7 +140,9 @@ class _GeotagAppState extends State<GeotagApp> implements GeotagAppController {
 
         // Selection
         const SingleActivator(LogicalKeyboardKey.arrowLeft): const MoveSelectionIntent.backward(),
+        const SingleActivator(LogicalKeyboardKey.arrowLeft, shift: true): const MoveSelectionIntent.backward(),
         const SingleActivator(LogicalKeyboardKey.arrowRight): const MoveSelectionIntent.forward(),
+        const SingleActivator(LogicalKeyboardKey.arrowRight, shift: true): const MoveSelectionIntent.forward(),
         const SingleActivator(LogicalKeyboardKey.keyA, meta: true, includeRepeats: false): const SelectAllIntent(),
 
         // Sorting
