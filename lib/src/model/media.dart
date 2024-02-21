@@ -642,6 +642,7 @@ abstract base class MediaItems extends MediaItemsView {
       // so the items list needs to be updated to match.
       final MediaItem removed = localItems[i];
       root._removeItemAt(root.indexOf(removed));
+      imageCache.evict(FileImage(FilesBinding.instance.fs.file(removed.path)));
       controller.add(null);
     }, onError: controller.addError, onDone: controller.close);
     return controller.stream;
