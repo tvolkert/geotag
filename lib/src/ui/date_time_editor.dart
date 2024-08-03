@@ -3,6 +3,21 @@ import 'package:intl/intl.dart';
 
 import '../bindings/clock.dart';
 
+sealed class DateTimeEditorResult {}
+
+final class SetDateTime extends DateTimeEditorResult {
+  SetDateTime(this.value);
+
+  final DateTime value;
+}
+
+final class AdjustDateTime extends DateTimeEditorResult {
+  AdjustDateTime(this.type, this.value);
+
+  final AdjustmentType type;
+  final int value;
+}
+
 /// A widget that allows the user to edit the DateTime associated with a photo
 /// or video.
 ///
@@ -26,8 +41,8 @@ class DateTimeEditorDialog extends StatefulWidget {
   ///
   /// If the user cancels the edits or clicks outside the dialog to dismiss it,
   /// the returned future will produce a null value.
-  static Future<DateTime?> show(BuildContext context, [DateTime? initialDateTime]) {
-    return showDialog<DateTime>(
+  static Future<DateTimeEditorResult?> show(BuildContext context, [DateTime? initialDateTime]) {
+    return showDialog<DateTimeEditorResult>(
       context: context,
       builder: (BuildContext context) => DateTimeEditorDialog(initialDateTime: initialDateTime),
     );
@@ -42,6 +57,16 @@ enum _AmPm {
   pm,
 }
 
+enum EditType {
+  setDate,
+  adjustDate,
+}
+
+enum AdjustmentType {
+  minutes,
+  hours,
+}
+
 class _DateTimeEditorDialogState extends State<DateTimeEditorDialog> {
   late int year, defaultYear;
   late int month, defaultMonth;
@@ -49,6 +74,15 @@ class _DateTimeEditorDialogState extends State<DateTimeEditorDialog> {
   late int hour, defaultHour;
   late int minute, defaultMinute;
   late _AmPm ampm, defaultAmPm;
+  EditType editType = EditType.setDate;
+  int adjustmentValue = 1;
+  AdjustmentType adjustmentType = AdjustmentType.minutes;
+
+  void _handleChangeEditType(EditType? value) {
+    setState(() {
+      editType = value!;
+    });
+  }
 
   void _handleYearChanged(int value) {
     setState(() {
@@ -86,12 +120,33 @@ class _DateTimeEditorDialogState extends State<DateTimeEditorDialog> {
     });
   }
 
+  void _handleAdjustmentValueChanged(int value) {
+    setState(() {
+      adjustmentValue = value;
+    });
+  }
+
+  void _handleAdjustmentTypeChanged(AdjustmentType? value) {
+    setState(() {
+      adjustmentType = value!;
+    });
+  }
+
   void _handleCancel() {
-    Navigator.pop<DateTime>(context);
+    Navigator.pop<DateTimeEditorResult>(context);
   }
 
   void _handleSave() {
-    Navigator.pop<DateTime>(context, currentDateTime);
+    Navigator.pop<DateTimeEditorResult>(context, result);
+  }
+
+  DateTimeEditorResult get result {
+    switch (editType) {
+      case EditType.setDate:
+        return SetDateTime(currentDateTime);
+      case EditType.adjustDate:
+        return AdjustDateTime(adjustmentType, adjustmentValue);
+    }
   }
 
   DateTime get currentDateTime {
@@ -103,6 +158,10 @@ class _DateTimeEditorDialogState extends State<DateTimeEditorDialog> {
     final DateFormat format = DateFormat('EEEE, MMMM d, yyyy, h:mm a');
     return format.format(currentDateTime);
   }
+
+  bool get isTypeSetDate => editType == EditType.setDate;
+
+  bool get isTypeAdjustDate => editType == EditType.adjustDate;
 
   _initialize() {
     final DateTime instant = widget.initialDateTime ?? ClockBinding.instance.now();
@@ -149,7 +208,14 @@ class _DateTimeEditorDialogState extends State<DateTimeEditorDialog> {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
+                  Radio<EditType>(
+                    value: EditType.setDate,
+                    groupValue: editType,
+                    onChanged: _handleChangeEditType,
+                  ),
+                  const Text('Set date to'),
                   _IntEntry(
+                    isEnabled: isTypeSetDate,
                     defaultValue: defaultYear,
                     label: 'Year',
                     maxLength: 4,
@@ -158,31 +224,64 @@ class _DateTimeEditorDialogState extends State<DateTimeEditorDialog> {
                   ),
                   const SizedBox(width: 8),
                   _IntEntry(
+                    isEnabled: isTypeSetDate,
                     defaultValue: defaultMonth,
                     label: 'Month',
                     onValueChanged: _handleMonthChanged,
                   ),
                   const SizedBox(width: 8),
                   _IntEntry(
+                    isEnabled: isTypeSetDate,
                     defaultValue: defaultDay,
                     label: 'Day',
                     onValueChanged: _handleDayChanged,
                   ),
                   const SizedBox(width: 12),
                   _IntEntry(
+                    isEnabled: isTypeSetDate,
                     defaultValue: defaultHour,
                     label: 'Time',
                     onValueChanged: _handleHourChanged,
                   ),
                   const SizedBox(width: 8, child: Center(child: Text(':'))),
                   _IntEntry(
+                    isEnabled: isTypeSetDate,
                     defaultValue: defaultMinute,
                     onValueChanged: _handleMinuteChanged,
                   ),
                   const SizedBox(width: 8),
                   _AmPmEntry(
+                    isEnabled: isTypeSetDate,
                     defaultValue: defaultAmPm,
                     onValueChanged: _handleAmPmChanged,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Radio<EditType>(
+                    value: EditType.adjustDate,
+                    groupValue: editType,
+                    onChanged: _handleChangeEditType,
+                  ),
+                  const Text('Adjust date by'),
+                  _IntEntry(
+                    isEnabled: isTypeAdjustDate,
+                    allowNegative: true,
+                    defaultValue: adjustmentValue,
+                    onValueChanged: _handleAdjustmentValueChanged,
+                  ),
+                  DropdownButton<AdjustmentType>(
+                    value: adjustmentType,
+                    onChanged: _handleAdjustmentTypeChanged,
+                    items: AdjustmentType.values.map<DropdownMenuItem<AdjustmentType>>((AdjustmentType value) {
+                      return DropdownMenuItem<AdjustmentType>(
+                        value: value,
+                        child: Text(value.name),
+                      );
+                    }).toList(),
                   ),
                 ],
               ),
@@ -225,14 +324,17 @@ class _ValidatingTextEditingController<T> extends TextEditingController {
 }
 
 class _IntValidatingTextEditingController extends _ValidatingTextEditingController<int> {
-  _IntValidatingTextEditingController(super.onValueChanged);
+  _IntValidatingTextEditingController(this.allowNegative, super.onValueChanged);
+
+  final bool allowNegative;
 
   @override
   set value(TextEditingValue newValue) {
-    final String newText = newValue.text;
+    final String newText = newValue.text == '-' ? '' : newValue.text;
     final bool textChanged = newText != value.text;
     final int? intValue = int.tryParse(newValue.text);
-    if (newText.isEmpty || (intValue != null && intValue >= 0)) {
+    final bool isLegalValue = intValue != null && (allowNegative || intValue >= 0);
+    if (newText.isEmpty || isLegalValue) {
       super.value = newValue;
       if (!doingSetup && textChanged && intValue != null) {
         onValueChanged(intValue);
@@ -244,14 +346,18 @@ class _IntValidatingTextEditingController extends _ValidatingTextEditingControll
 // TODO: handle configuration for minutes ("07" instead of "7")
 class _IntEntry extends StatefulWidget {
   const _IntEntry({
+    required this.isEnabled,
     required this.defaultValue,
+    this.allowNegative = false,
     this.label = '',
     this.maxLength = 2,
     required this.onValueChanged,
     this.autofocus = false,
   });
 
+  final bool isEnabled;
   final int defaultValue;
+  final bool allowNegative;
   final String label;
   final int maxLength;
   final ValueChanged<int> onValueChanged;
@@ -284,7 +390,7 @@ class _IntEntryState extends State<_IntEntry> {
     super.initState();
     _focusNode = FocusNode();
     _focusNode.addListener(_handleFocusChanged);
-    _controller = _IntValidatingTextEditingController(widget.onValueChanged);
+    _controller = _IntValidatingTextEditingController(widget.allowNegative, widget.onValueChanged);
     _controller.invokeSetupCallback(() {
       _controller.text = '${widget.defaultValue}';
     });
@@ -307,6 +413,7 @@ class _IntEntryState extends State<_IntEntry> {
   @override
   Widget build(BuildContext context) {
     return _RawEntry(
+      isEnabled: widget.isEnabled,
       autofocus: widget.autofocus,
       focusNode: _focusNode,
       controller: _controller,
@@ -344,10 +451,12 @@ class _AmPmValidatingTextEditingController extends _ValidatingTextEditingControl
 
 class _AmPmEntry extends StatefulWidget {
   const _AmPmEntry({
+    required this.isEnabled,
     required this.defaultValue,
     required this.onValueChanged,
   });
 
+  final bool isEnabled;
   final _AmPm defaultValue;
   final ValueChanged<_AmPm> onValueChanged;
 
@@ -402,6 +511,7 @@ class _AmPmEntryState extends State<_AmPmEntry> {
   @override
   Widget build(BuildContext context) {
     return _RawEntry(
+      isEnabled: widget.isEnabled,
       autofocus: false,
       focusNode: _focusNode,
       controller: _controller,
@@ -415,6 +525,7 @@ class _AmPmEntryState extends State<_AmPmEntry> {
 
 class _RawEntry extends StatelessWidget {
   const _RawEntry({
+    required this.isEnabled,
     required this.autofocus,
     required this.focusNode,
     required this.controller,
@@ -424,6 +535,7 @@ class _RawEntry extends StatelessWidget {
     required this.hasFocus,
   });
 
+  final bool isEnabled;
   final bool autofocus;
   final FocusNode focusNode;
   final TextEditingController controller;
@@ -437,6 +549,7 @@ class _RawEntry extends StatelessWidget {
     return SizedBox(
       width: 96,
       child: TextField(
+        enabled: isEnabled,
         autofocus: autofocus,
         focusNode: focusNode,
         controller: controller,

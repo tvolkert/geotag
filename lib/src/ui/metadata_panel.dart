@@ -4,6 +4,7 @@ import 'dart:async';
 
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geotag/src/extensions/iterable.dart';
 import 'package:intl/intl.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -109,22 +110,47 @@ class _MetadataPanelState extends State<MetadataPanel> {
     await item.commit();
   }
 
+  Duration _getAdjustment(AdjustmentType type, int value) {
+    switch (type) {
+      case AdjustmentType.minutes:
+        return Duration(minutes: value);
+      case AdjustmentType.hours:
+        return Duration(hours: value);
+    }
+  }
+
   void _handleEditDateTime() async {
     if (widget.items.isEmpty) {
       return;
     }
 
-    DateTime? initialDateTime = widget.items.isSingle ? widget.items.single.dateTime : null;
-    DateTime? newDateTime = await DateTimeEditorDialog.show(context, initialDateTime);
-    if (newDateTime != null) {
-      if (widget.items.isSingle) {
-        await _updateDateTime(widget.items.single, newDateTime);
-      } else {
-        final List<Future<void>> futures = <Future<void>>[];
-        widget.items.forEach((MediaItem item) {
-          futures.add(_updateDateTime(item, newDateTime));
-        });
-        await Future.wait<void>(futures);
+    final DateTime? initialDateTime = widget.items.isSingle ? widget.items.single.dateTime : null;
+    final DateTimeEditorResult? result = await DateTimeEditorDialog.show(context, initialDateTime);
+    if (result != null) {
+      switch (result) {
+        case AdjustDateTime(type: final AdjustmentType type, value: final int value):
+          final Duration adjustment = _getAdjustment(type, value);
+          if (widget.items.isSingle) {
+            final DateTime newDateTime = widget.items.single.dateTime!.add(adjustment);
+            await _updateDateTime(widget.items.single, newDateTime);
+          } else {
+            final List<Future<void>> futures = <Future<void>>[];
+            widget.items.forEach((MediaItem item) {
+              final DateTime newDateTime = item.dateTime!.add(adjustment);
+              futures.add(_updateDateTime(item, newDateTime));
+            });
+            await Future.wait<void>(futures);
+          }
+        case SetDateTime(value: final DateTime newDateTime):
+          if (widget.items.isSingle) {
+            await _updateDateTime(widget.items.single, newDateTime);
+          } else {
+            final List<Future<void>> futures = <Future<void>>[];
+            widget.items.forEach((MediaItem item) {
+              futures.add(_updateDateTime(item, newDateTime));
+            });
+            await Future.wait<void>(futures);
+          }
       }
       setState(() {});
     }
@@ -145,15 +171,15 @@ class _MetadataPanelState extends State<MetadataPanel> {
     setIsEditingLatlng(FocusManager.instance.primaryFocus == latlngFocusNode);
   }
 
-  void _handlePostMessageReceived(JavaScriptMessage message) {
+  void _handlePostMessageReceived(JavaScriptMessage message) async {
     final List<String> parts = message.message.split(':');
     switch (parts.first) {
       case 'loaded':
         assert(!_onMapLoaded.isCompleted);
         _onMapLoaded.complete();
       case 'latlng':
-        print(parts.last);
-        // TODO: Update coordinates of the selected items
+        final GpsCoordinates coords = GpsCoordinates.fromString(parts.last);
+        await _saveLatLng(coords);
       case 'print':
         print(parts.skip(1).join());
       default:
@@ -229,6 +255,25 @@ class _MetadataPanelState extends State<MetadataPanel> {
     }
   }
 
+  Future<void> _saveLatLng(GpsCoordinates coords) async {
+    if (widget.items.isSingle) {
+      final MediaItem item = widget.items.single;
+      if (item.latlng != coords.latlng) {
+        await _updateLatlng(item, coords);
+        _updateLatlngUiElements();
+      }
+    } else {
+      final List<Future<void>> futures = <Future<void>>[];
+      widget.items.forEach((MediaItem item) {
+        if (item.latlng != coords.latlng) {
+          futures.add(_updateLatlng(item, coords));
+        }
+      });
+      await Future.wait<void>(futures);
+      _updateLatlngUiElements();
+    }
+  }
+
   Future<void> _saveLatlngEdits() async {
     if (widget.items.isEmpty || latlngController.text.isEmpty) {
       return;
@@ -236,22 +281,7 @@ class _MetadataPanelState extends State<MetadataPanel> {
 
     try {
       final GpsCoordinates coords = GpsCoordinates.fromString(latlngController.text);
-      if (widget.items.isSingle) {
-        final MediaItem item = widget.items.single;
-        if (item.latlng != coords.latlng) {
-          await _updateLatlng(item, coords);
-          _updateLatlngUiElements();
-        }
-      } else {
-        final List<Future<void>> futures = <Future<void>>[];
-        widget.items.forEach((MediaItem item) {
-          if (item.latlng != coords.latlng) {
-            futures.add(_updateLatlng(item, coords));
-          }
-        });
-        await Future.wait<void>(futures);
-        _updateLatlngUiElements();
-      }
+      await _saveLatLng(coords);
     } on FormatException {
       print('invalid gps coordinates');
     }
@@ -372,55 +402,62 @@ class _MetadataPanelState extends State<MetadataPanel> {
         }
       }
     }
-    return Wrap(
-      children: <Widget>[
-        const SizedBox(
-          width: double.infinity,
-          child: Padding(
-            padding: EdgeInsets.all(20),
-            child: Text(
-              'Details',
-              style: TextStyle(
-                color: Color(0xff606367),
-                fontFeatures: <FontFeature>[FontFeature.enable('smcp')],
+    return Shortcuts(
+      shortcuts: const <ShortcutActivator, Intent>{
+        SingleActivator(LogicalKeyboardKey.keyD, includeRepeats: false): DoNothingAndStopPropagationIntent(),
+        SingleActivator(LogicalKeyboardKey.keyF, includeRepeats: false): DoNothingAndStopPropagationIntent(),
+        SingleActivator(LogicalKeyboardKey.keyI, includeRepeats: false): DoNothingAndStopPropagationIntent(),
+      },
+      child: Wrap(
+        children: <Widget>[
+          const SizedBox(
+            width: double.infinity,
+            child: Padding(
+              padding: EdgeInsets.all(20),
+              child: Text(
+                'Details',
+                style: TextStyle(
+                  color: Color(0xff606367),
+                  fontFeatures: <FontFeature>[FontFeature.enable('smcp')],
+                ),
               ),
             ),
           ),
-        ),
-        MetadataField(
-          icon: Icons.calendar_today_rounded,
-          onEdit: _handleEditDateTime,
-          child: dateTimeDisplay,
-        ),
-        MetadataField(
-          icon: Icons.photo_outlined,
-          child: widget.items.isSingle
-              ? Expanded(child: SelectableText(widget.items.single.path.split('/').last))
-              : Text(
-                  '${widget.items.length} items',
-                  style: const TextStyle(fontStyle: FontStyle.italic),
-                ),
-        ),
-        MetadataField(
-          icon: Icons.local_activity,
-          child: Expanded(
-            child: TextField(
-              controller: eventController,
-              focusNode: eventFocusNode,
-              onSubmitted: _handleEventSubmitted,
+          MetadataField(
+            icon: Icons.calendar_today_rounded,
+            onEdit: _handleEditDateTime,
+            child: dateTimeDisplay,
+          ),
+          MetadataField(
+            icon: Icons.photo_outlined,
+            child: widget.items.isSingle
+                ? Expanded(child: SelectableText(widget.items.single.path.split('/').last))
+                : Text(
+                    '${widget.items.length} items',
+                    style: const TextStyle(fontStyle: FontStyle.italic),
+                  ),
+          ),
+          MetadataField(
+            icon: Icons.local_activity,
+            child: Expanded(
+              child: TextField(
+                controller: eventController,
+                focusNode: eventFocusNode,
+                onSubmitted: _handleEventSubmitted,
+              ),
             ),
           ),
-        ),
-        TextField(
-          controller: latlngController,
-          focusNode: latlngFocusNode,
-          onSubmitted: _handleLatlngSubmitted,
-        ),
-        AspectRatio(
-          aspectRatio: 1.65,
-          child: WebViewWidget(controller: webViewController),
-        ),
-      ],
+          TextField(
+            controller: latlngController,
+            focusNode: latlngFocusNode,
+            onSubmitted: _handleLatlngSubmitted,
+          ),
+          AspectRatio(
+            aspectRatio: 1.65,
+            child: WebViewWidget(controller: webViewController),
+          ),
+        ],
+      ),
     );
   }
 }

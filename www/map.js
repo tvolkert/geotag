@@ -201,7 +201,7 @@ async function initMap() {
         const position = draggableMarker.position;
         map.panTo(position);
         if (window.Geotag) {
-          Geotag.postMessage("latlng:" + position.lat() + "," + position.lng());
+          Geotag.postMessage("latlng:" + position.lat + "," + position.lng);
         }
       });
     }

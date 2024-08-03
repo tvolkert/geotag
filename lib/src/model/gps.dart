@@ -11,6 +11,10 @@ class GpsCoordinates {
 
   const GpsCoordinates.raw(this.latitude, this.longitude);
 
+  /// Creates a [GpsCoordinates] object from its string representation.
+  ///
+  /// The format should be of the form "${latitude},${longitude}", optionally
+  /// with one or more consecutive spaces after the comma.
   factory GpsCoordinates.fromString(String value) {
     final List<String> values = value.split(RegExp(r', *'));
     if (values.length != 2) {

@@ -753,6 +753,9 @@ abstract base class MediaItems extends MediaItemsView {
         if (basenameWithoutExtension.contains('-Enhanced-NR')) {
           basenameWithoutExtension = basenameWithoutExtension.replaceAll('-Enhanced-NR', '');
         }
+        if (basenameWithoutExtension.contains('-HDR')) {
+          basenameWithoutExtension = basenameWithoutExtension.replaceAll('-HDR', '');
+        }
         File target = parent.childFile('$basenameWithoutExtension$extension');
         for (int i = 1; target.existsSync(); i++) {
           // Resolve collision
